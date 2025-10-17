@@ -1,0 +1,254 @@
+
+import { useMemo, useState, useEffect } from "react";
+import { PlusCircle, Star, CalendarDays, Trash2, CheckCircle2, Circle, ArrowUpDown } from "lucide-react";
+
+
+class Task {
+  /** @param {object} p */
+  constructor(p) {
+    this.id = p.id ?? crypto.randomUUID();
+    this.title = p.title ?? "Untitled";
+    this.completed = Boolean(p.completed);
+    this.meta = p.meta || {};
+    this.type = p.type || "simple";
+    this.createdAt = p.createdAt ?? Date.now();
+  }
+  toggle() {
+    this.completed = !this.completed;
+  }
+  toJSON() {
+    return {
+      id: this.id,
+      title: this.title,
+      completed: this.completed,
+      createdAt: this.createdAt,
+      type: this.type,
+      meta: this.meta,
+    };
+  }
+}
+
+class SimpleTask extends Task {
+  constructor(p) {
+    super({ ...p, type: "simple", meta: { icon: "circle" } });
+  }
+}
+
+class PriorityTask extends Task {
+  constructor(p) {
+    super({ ...p, type: "priority", meta: { icon: "star", priority: p.priority ?? 1 } });
+  }
+}
+
+class DeadlineTask extends Task {
+  constructor(p) {
+    super({ ...p, type: "deadline", meta: { icon: "calendar", due: p.due ?? new Date().toISOString() } });
+  }
+}
+
+class TaskFactory {
+  /** @param {"simple"|"priority"|"deadline"} kind */
+  /** @param {object} props */
+  static create(kind, props = {}) {
+    switch (kind) {
+      case "priority":
+        return new PriorityTask(props);
+      case "deadline":
+        return new DeadlineTask(props);
+      case "simple":
+      default:
+        return new SimpleTask(props);
+    }
+  }
+
+  static fromJSON(json) {
+    return TaskFactory.create(json.type, json);
+  }
+}
+
+const STORAGE_KEY = "factory-method-todos";
+
+function loadTasks() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return arr.map(TaskFactory.fromJSON);
+  } catch {
+    return [];
+  }
+}
+
+function saveTasks(tasks) {
+  const serial = tasks.map(t => t.toJSON());
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(serial));
+}
+
+function TypeBadge({ type }) {
+  const map = {
+    simple: { label: "Simple", icon: Circle },
+    priority: { label: "Priority", icon: Star },
+    deadline: { label: "Deadline", icon: CalendarDays },
+  };
+  const Cmp = map[type]?.icon || Circle;
+  const label = map[type]?.label || type;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-slate-100">
+      <Cmp size={14} /> {label}
+    </span>
+  );
+}
+
+function IconByName({ name, size = 18 }) {
+  const icons = { circle: Circle, star: Star, calendar: CalendarDays };
+  const Cmp = icons[name] || Circle;
+  return <Cmp size={size} />;
+}
+
+export default function App() {
+  const [tasks, setTasks] = useState(() => loadTasks());
+  const [title, setTitle] = useState("");
+  const [kind, setKind] = useState("simple");
+  const [priority, setPriority] = useState(2);
+  const [due, setDue] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 16)); // tomorrow
+  const [sortBy, setSortBy] = useState("createdAt");
+
+  useEffect(() => saveTasks(tasks), [tasks]);
+
+  const sorted = useMemo(() => {
+    const arr = [...tasks];
+    if (sortBy === "createdAt") arr.sort((a, b) => b.createdAt - a.createdAt);
+    if (sortBy === "title") arr.sort((a, b) => a.title.localeCompare(b.title));
+    if (sortBy === "type") arr.sort((a, b) => a.type.localeCompare(b.type));
+    if (sortBy === "priority") arr.sort((a, b) => (b.meta?.priority ?? 0) - (a.meta?.priority ?? 0));
+    if (sortBy === "due") arr.sort((a, b) => new Date(a.meta?.due ?? 0) - new Date(b.meta?.due ?? 0));
+    return arr;
+  }, [tasks, sortBy]);
+
+  function addTask(e) {
+    e?.preventDefault?.();
+    if (!title.trim()) return;
+    const props = { title: title.trim() };
+    if (kind === "priority") props.priority = Number(priority);
+    if (kind === "deadline") props.due = new Date(due).toISOString();
+    const t = TaskFactory.create(kind, props);
+    setTasks(prev => [t, ...prev]);
+    setTitle("");
+  }
+
+  function toggleTask(id) {
+    setTasks(prev => prev.map(t => (t.id === id ? (t.toggle(), new TaskFactory.fromJSON(t.toJSON())) : t)));
+  }
+
+  function removeTask(id) {
+    setTasks(prev => prev.filter(t => t.id !== id));
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800">
+      <header className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-3xl font-bold tracking-tight">Todo – Factory Method</h1>
+        <p className="text-slate-500 mt-1">Jedna baza UI, wiele klas domenowych tworzone przez fabrykę.</p>
+      </header>
+
+      <main className="mx-auto max-w-3xl px-4 pb-24">
+        {/* Composer */}
+        <form onSubmit={addTask} className="bg-white rounded-2xl shadow p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="md:col-span-2 flex items-center gap-2 border rounded-xl px-3">
+            <PlusCircle />
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Dodaj zadanie..."
+              className="w-full py-2 outline-none"
+            />
+          </div>
+
+          <select value={kind} onChange={e => setKind(e.target.value)} className="border rounded-xl px-3 py-2">
+            <option value="simple">Simple</option>
+            <option value="priority">Priority</option>
+            <option value="deadline">Deadline</option>
+          </select>
+
+          {kind === "priority" && (
+            <input
+              type="number"
+              min={1}
+              max={5}
+              value={priority}
+              onChange={e => setPriority(e.target.value)}
+              className="border rounded-xl px-3 py-2"
+              placeholder="Priorytet 1-5"
+            />
+          )}
+
+          {kind === "deadline" && (
+            <input
+              type="datetime-local"
+              value={due}
+              onChange={e => setDue(e.target.value)}
+              className="border rounded-xl px-3 py-2"
+            />
+          )}
+
+          <button type="submit" className="rounded-xl bg-slate-900 text-white px-4 py-2">Dodaj</button>
+        </form>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between mt-6">
+          <div className="text-sm text-slate-500">{tasks.length} zadań</div>
+          <div className="flex items-center gap-2">
+            <ArrowUpDown size={16} />
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border rounded-xl px-2 py-1 text-sm">
+              <option value="createdAt">Najnowsze</option>
+              <option value="title">Tytuł</option>
+              <option value="type">Typ</option>
+              <option value="priority">Priorytet</option>
+              <option value="due">Termin</option>
+            </select>
+          </div>
+        </div>
+
+        {/* List */}
+        <ul className="mt-4 space-y-3">
+          {sorted.map(t => (
+            <li key={t.id} className="bg-white rounded-2xl shadow p-4 flex items-center gap-3">
+              <button onClick={() => toggleTask(t.id)} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border">
+                {t.completed ? <CheckCircle2 /> : <Circle />}
+              </button>
+              <div className="flex-1">
+                <div className={`font-medium ${t.completed ? "line-through text-slate-400" : ""}`}>{t.title}</div>
+                <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                  <TypeBadge type={t.type} />
+                  {t.type === "priority" && (
+                    <span className="inline-flex items-center gap-1"><Star size={14} />P{t.meta?.priority}</span>
+                  )}
+                  {t.type === "deadline" && (
+                    <span className="inline-flex items-center gap-1"><CalendarDays size={14} />{new Date(t.meta?.due).toLocaleString()}</span>
+                  )}
+                </div>
+              </div>
+              <div className="shrink-0 opacity-70">
+                <IconByName name={t.meta?.icon} />
+              </div>
+              <button onClick={() => removeTask(t.id)} className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100">
+                <Trash2 />
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {/* Empty state */}
+        {sorted.length === 0 && (
+          <div className="text-center text-slate-500 mt-10">
+            Lista jest pusta. Dodaj pierwsze zadanie powyżej.
+          </div>
+        )}
+      </main>
+
+      <footer className="text-center text-xs text-slate-400 py-10">
+        Wzorzec: Factory Method • Lokalna pamięć: localStorage
+      </footer>
+    </div>
+  );
+}
