@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import {
   PlusCircle, Star, CalendarDays, Trash2, CheckCircle2, Circle, ArrowUpDown,
-  Copy, AlertCircle, Pencil, Save, X
+  Copy, AlertCircle, Pencil, Save, X, Pin, PinOff
 } from "lucide-react";
 import { useStore } from "./StoreContext";
 import { cloneTask } from "./prototype";
+import { togglePinned, addTags, removeTag, setTags } from "./decorators";
 
 class Task {
   constructor(p) {
@@ -66,6 +67,16 @@ function IconByName({ name, size = 18 }) {
   const Cmp = icons[name] || Circle;
   return <Cmp size={size} />;
 }
+function Tag({ children, onRemove }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-xs">
+      #{children}
+      {onRemove && (
+        <button onClick={onRemove} className="ml-1 -mr-1 px-1 rounded hover:bg-slate-200">×</button>
+      )}
+    </span>
+  );
+}
 
 export default function App() {
   const { tasks, todoStore, lastError } = useStore();
@@ -83,6 +94,7 @@ export default function App() {
   const [editTitle, setEditTitle] = useState("");
   const [editPriority, setEditPriority] = useState(2);
   const [editDue, setEditDue] = useState("");
+  const [editTags, setEditTags] = useState(""); 
 
   const sorted = useMemo(() => {
     const arr = [...tasks];
@@ -91,7 +103,10 @@ export default function App() {
     if (sortBy === "type") arr.sort((a, b) => a.type.localeCompare(b.type));
     if (sortBy === "priority") arr.sort((a, b) => (b.meta?.priority ?? 0) - (a.meta?.priority ?? 0));
     if (sortBy === "due") arr.sort((a, b) => new Date(a.meta?.due ?? 0) - new Date(b.meta?.due ?? 0));
-    return arr;
+    if (sortBy === "pinned") arr.sort((a, b) => Number(Boolean(b.meta?.pinned)) - Number(Boolean(a.meta?.pinned)));
+    const pinned = arr.filter(t => t.meta?.pinned);
+    const rest = arr.filter(t => !t.meta?.pinned);
+    return sortBy === "pinned" ? [...pinned, ...rest] : [...pinned, ...rest];
   }, [tasks, sortBy]);
 
   function addTask(e) {
@@ -122,12 +137,33 @@ export default function App() {
     todoStore.add(instanceCopy);
   }
 
+  function togglePin(id) {
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    const next = togglePinned(t);
+    todoStore.update(id, next); 
+  }
+
+  function addTagQuick(id, tag) {
+    const t = tasks.find(x => x.id === id);
+    if (!t || !tag.trim()) return;
+    const next = addTags(t, [tag.trim()]);
+    todoStore.update(id, next);
+  }
+  function removeTagQuick(id, tag) {
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    const next = removeTag(t, tag);
+    todoStore.update(id, next);
+  }
+
   function startEdit(t) {
     setEditId(t.id);
     setEditTitle(t.title);
     setEditPriority(t.meta?.priority ?? 2);
     const iso = t.meta?.due ? new Date(t.meta.due).toISOString() : new Date().toISOString();
     setEditDue(iso.slice(0, 16));
+    setEditTags((t.meta?.tags || []).join(", "));
   }
 
   function cancelEdit() {
@@ -135,23 +171,29 @@ export default function App() {
     setEditTitle("");
     setEditPriority(2);
     setEditDue("");
+    setEditTags("");
   }
 
   function saveEdit(t) {
     if (!editTitle.trim()) return;
 
-    const patch = { title: editTitle.trim() };
+    let patched = { ...t, title: editTitle.trim() };
+
     if (t.type === "priority") {
-      patch.meta = { priority: Number(editPriority) };
+      patched = { ...patched, meta: { ...(patched.meta || {}), priority: Number(editPriority) } };
     }
     if (t.type === "deadline") {
-      patch.meta = { due: new Date(editDue).toISOString() };
-    }
-    if (t.meta?.icon) {
-      patch.meta = { ...(patch.meta || {}), icon: t.meta.icon };
+      patched = { ...patched, meta: { ...(patched.meta || {}), due: new Date(editDue).toISOString() } };
     }
 
-    todoStore.update(t.id, patch);
+    const tagsArray = editTags.split(",").map(s => s.trim()).filter(Boolean);
+    patched = setTags(patched, tagsArray);
+
+    if (!patched.meta.icon && t.meta?.icon) {
+      patched.meta.icon = t.meta.icon;
+    }
+
+    todoStore.update(t.id, patched);
     cancelEdit();
   }
 
@@ -165,9 +207,9 @@ export default function App() {
       )}
 
       <header className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-3xl font-bold tracking-tight">Todo – Facade</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Todo – Decorator</h1>
         <p className="text-slate-500 mt-1">
-          Fasada persystencji (Facade) + Prototype + Singleton Store + Factory Method + Edycja inline.
+          Dekoratory: przypinanie (pinned) i tagi (tags) • + Prototype • + Facade • + Singleton • + Factory • + Edycja.
         </p>
       </header>
 
@@ -235,6 +277,7 @@ export default function App() {
               <option value="type">Typ</option>
               <option value="priority">Priorytet</option>
               <option value="due">Termin</option>
+              <option value="pinned">Pinned first</option>
             </select>
           </div>
         </div>
@@ -243,6 +286,9 @@ export default function App() {
         <ul className="mt-4 space-y-3">
           {sorted.map(t => {
             const isEditing = editId === t.id;
+            const tags = t.meta?.tags || [];
+            const isPinned = Boolean(t.meta?.pinned);
+
             return (
               <li key={t.id} className="bg-white rounded-2xl shadow p-4 flex items-center gap-3">
                 <button
@@ -256,8 +302,11 @@ export default function App() {
                 <div className="flex-1">
                   {!isEditing ? (
                     <>
-                      <div className={`font-medium ${t.completed ? "line-through text-slate-400" : ""}`}>{t.title}</div>
-                      <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                      <div className={`font-medium ${t.completed ? "line-through text-slate-400" : ""}`}>
+                        {t.title}
+                      </div>
+
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                         <TypeBadge type={t.type} />
                         {t.type === "priority" && (
                           <span className="inline-flex items-center gap-1"><Star size={14} />P{t.meta?.priority}</span>
@@ -268,10 +317,18 @@ export default function App() {
                             {new Date(t.meta?.due).toLocaleString()}
                           </span>
                         )}
+                        {isPinned && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                            <Pin size={14} /> pinned
+                          </span>
+                        )}
+                        {tags.map(tag => (
+                          <Tag key={tag}>{tag}</Tag>
+                        ))}
                       </div>
                     </>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-center">
                       <input
                         value={editTitle}
                         onChange={e => setEditTitle(e.target.value)}
@@ -295,12 +352,39 @@ export default function App() {
                           className="border rounded-xl px-3 py-2"
                         />
                       )}
+                      <input
+                        value={editTags}
+                        onChange={e => setEditTags(e.target.value)}
+                        className="md:col-span-2 border rounded-xl px-3 py-2"
+                        placeholder="tag1, tag2, tag3"
+                      />
                     </div>
                   )}
                 </div>
 
+                {/* Decorator: pin toggle */}
+                <button
+                  onClick={() => togglePin(t.id)}
+                  className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100"
+                  title={isPinned ? "Odepnij" : "Przypnij"}
+                >
+                  {isPinned ? <Pin /> : <PinOff />}
+                </button>
+
                 {!isEditing ? (
                   <>
+                    {/* Quick add tag (mały input pojawia się przy hoverze elementu – tu prosto: prompt) */}
+                    <button
+                      onClick={() => {
+                        const tag = prompt("Dodaj tag (np. 'school'):");
+                        if (tag) addTagQuick(t.id, tag);
+                      }}
+                      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100"
+                      title="Dodaj tag"
+                    >
+                      #
+                    </button>
+
                     <button
                       onClick={() => duplicateTask(t.id)}
                       className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100"
@@ -346,6 +430,9 @@ export default function App() {
           })}
         </ul>
 
+        {/* Usuwanie tagów — małe przyciski „×” na chipach pojawiają się tylko w trybie edycji.
+            Quick remove dla trybu nieedytowanego dodaliśmy przez removeTagQuick (możesz dorobić menu). */}
+
         {sorted.length === 0 && (
           <div className="text-center text-slate-500 mt-10">
             Lista jest pusta. Dodaj pierwsze zadanie powyżej.
@@ -354,7 +441,7 @@ export default function App() {
       </main>
 
       <footer className="text-center text-xs text-slate-400 py-10">
-        Wzorzec: Facade + Prototype + Singleton Store + Factory Method + Edycja inline
+        Wzorzec: Decorator + Prototype + Facade + Singleton + Factory )
       </footer>
     </div>
   );

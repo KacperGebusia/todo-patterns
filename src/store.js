@@ -19,7 +19,7 @@ class TodoStore {
 
     this.persistence = new PersistenceFacade();
 
-    this.emitter = new Emitter();       
+    this.emitter = new Emitter();      
     this.errorEmitter = new Emitter();  
 
     const { ok, data, error } = this.persistence.load();
@@ -27,6 +27,7 @@ class TodoStore {
     if (!ok) this.#notifyError(error);
   }
 
+ 
   #save() {
     const res = this.persistence.save(this.state);
     if (!res.ok) this.#notifyError(res.error);
