@@ -1,10 +1,8 @@
-
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { PlusCircle, Star, CalendarDays, Trash2, CheckCircle2, Circle, ArrowUpDown } from "lucide-react";
-
+import { useStore } from "./StoreContext";
 
 class Task {
-  /** @param {object} p */
   constructor(p) {
     this.id = p.id ?? crypto.randomUUID();
     this.title = p.title ?? "Untitled";
@@ -47,41 +45,19 @@ class DeadlineTask extends Task {
 }
 
 class TaskFactory {
-  /** @param {"simple"|"priority"|"deadline"} kind */
-  /** @param {object} props */
   static create(kind, props = {}) {
     switch (kind) {
       case "priority":
         return new PriorityTask(props);
       case "deadline":
         return new DeadlineTask(props);
-      case "simple":
       default:
         return new SimpleTask(props);
     }
   }
-
   static fromJSON(json) {
     return TaskFactory.create(json.type, json);
   }
-}
-
-const STORAGE_KEY = "factory-method-todos";
-
-function loadTasks() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return arr.map(TaskFactory.fromJSON);
-  } catch {
-    return [];
-  }
-}
-
-function saveTasks(tasks) {
-  const serial = tasks.map(t => t.toJSON());
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(serial));
 }
 
 function TypeBadge({ type }) {
@@ -106,14 +82,12 @@ function IconByName({ name, size = 18 }) {
 }
 
 export default function App() {
-  const [tasks, setTasks] = useState(() => loadTasks());
+  const { tasks, todoStore } = useStore();
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("simple");
   const [priority, setPriority] = useState(2);
-  const [due, setDue] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 16)); // tomorrow
+  const [due, setDue] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 16));
   const [sortBy, setSortBy] = useState("createdAt");
-
-  useEffect(() => saveTasks(tasks), [tasks]);
 
   const sorted = useMemo(() => {
     const arr = [...tasks];
@@ -132,23 +106,23 @@ export default function App() {
     if (kind === "priority") props.priority = Number(priority);
     if (kind === "deadline") props.due = new Date(due).toISOString();
     const t = TaskFactory.create(kind, props);
-    setTasks(prev => [t, ...prev]);
+    todoStore.add(t);
     setTitle("");
   }
 
   function toggleTask(id) {
-    setTasks(prev => prev.map(t => (t.id === id ? (t.toggle(), new TaskFactory.fromJSON(t.toJSON())) : t)));
+    todoStore.toggle(id);
   }
 
   function removeTask(id) {
-    setTasks(prev => prev.filter(t => t.id !== id));
+    todoStore.remove(id);
   }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <header className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-3xl font-bold tracking-tight">Todo – Factory Method</h1>
-        <p className="text-slate-500 mt-1">Jedna baza UI, wiele klas domenowych tworzone przez fabrykę.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Todo – Singleton Store</h1>
+        <p className="text-slate-500 mt-1">Globalny store (Singleton) z React Contextem.</p>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 pb-24">
@@ -199,7 +173,11 @@ export default function App() {
           <div className="text-sm text-slate-500">{tasks.length} zadań</div>
           <div className="flex items-center gap-2">
             <ArrowUpDown size={16} />
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border rounded-xl px-2 py-1 text-sm">
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              className="border rounded-xl px-2 py-1 text-sm"
+            >
               <option value="createdAt">Najnowsze</option>
               <option value="title">Tytuł</option>
               <option value="type">Typ</option>
@@ -213,7 +191,10 @@ export default function App() {
         <ul className="mt-4 space-y-3">
           {sorted.map(t => (
             <li key={t.id} className="bg-white rounded-2xl shadow p-4 flex items-center gap-3">
-              <button onClick={() => toggleTask(t.id)} className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border">
+              <button
+                onClick={() => toggleTask(t.id)}
+                className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border"
+              >
                 {t.completed ? <CheckCircle2 /> : <Circle />}
               </button>
               <div className="flex-1">
@@ -224,14 +205,20 @@ export default function App() {
                     <span className="inline-flex items-center gap-1"><Star size={14} />P{t.meta?.priority}</span>
                   )}
                   {t.type === "deadline" && (
-                    <span className="inline-flex items-center gap-1"><CalendarDays size={14} />{new Date(t.meta?.due).toLocaleString()}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays size={14} />
+                      {new Date(t.meta?.due).toLocaleString()}
+                    </span>
                   )}
                 </div>
               </div>
               <div className="shrink-0 opacity-70">
                 <IconByName name={t.meta?.icon} />
               </div>
-              <button onClick={() => removeTask(t.id)} className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100">
+              <button
+                onClick={() => removeTask(t.id)}
+                className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100"
+              >
                 <Trash2 />
               </button>
             </li>
@@ -247,7 +234,7 @@ export default function App() {
       </main>
 
       <footer className="text-center text-xs text-slate-400 py-10">
-        Wzorzec: Factory Method • Lokalna pamięć: localStorage
+        Wzorzec: Singleton • Globalny Store + Context API
       </footer>
     </div>
   );
