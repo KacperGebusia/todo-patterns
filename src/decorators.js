@@ -2,7 +2,7 @@ function normalizeTags(arr) {
   const a = (arr ?? [])
     .map(x => String(x || "").trim())
     .filter(Boolean);
-  return Array.from(new Set(a)); // unikalne
+  return Array.from(new Set(a));
 }
 
 export function togglePinned(task) {

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   PlusCircle, Star, CalendarDays, Trash2, CheckCircle2, Circle, ArrowUpDown,
-  Copy, AlertCircle, Pencil, Save, X, Pin, PinOff
+  Copy, AlertCircle, Pencil, Save, X, Pin, PinOff, Database
 } from "lucide-react";
 import { useStore } from "./StoreContext";
 import { cloneTask } from "./prototype";
@@ -79,7 +79,7 @@ function Tag({ children, onRemove }) {
 }
 
 export default function App() {
-  const { tasks, todoStore, lastError } = useStore();
+  const { tasks, todoStore, lastError, backend, ready } = useStore();
 
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("simple");
@@ -94,7 +94,7 @@ export default function App() {
   const [editTitle, setEditTitle] = useState("");
   const [editPriority, setEditPriority] = useState(2);
   const [editDue, setEditDue] = useState("");
-  const [editTags, setEditTags] = useState(""); 
+  const [editTags, setEditTags] = useState("");
 
   const sorted = useMemo(() => {
     const arr = [...tasks];
@@ -103,13 +103,12 @@ export default function App() {
     if (sortBy === "type") arr.sort((a, b) => a.type.localeCompare(b.type));
     if (sortBy === "priority") arr.sort((a, b) => (b.meta?.priority ?? 0) - (a.meta?.priority ?? 0));
     if (sortBy === "due") arr.sort((a, b) => new Date(a.meta?.due ?? 0) - new Date(b.meta?.due ?? 0));
-    if (sortBy === "pinned") arr.sort((a, b) => Number(Boolean(b.meta?.pinned)) - Number(Boolean(a.meta?.pinned)));
     const pinned = arr.filter(t => t.meta?.pinned);
     const rest = arr.filter(t => !t.meta?.pinned);
-    return sortBy === "pinned" ? [...pinned, ...rest] : [...pinned, ...rest];
+    return [...pinned, ...rest];
   }, [tasks, sortBy]);
 
-  function addTask(e) {
+  async function addTask(e) {
     e?.preventDefault?.();
     setError("");
 
@@ -119,43 +118,43 @@ export default function App() {
       if (kind === "priority") baseProps.priority = Number(priority);
       if (kind === "deadline") baseProps.due = new Date(due).toISOString();
       const task = TaskFactory.create(kind, baseProps);
-      todoStore.add(task);
+      await todoStore.add(task);
       setTitle("");
     } catch (err) {
       setError(err.message || "Nie udało się dodać zadania.");
     }
   }
 
-  function toggleTask(id) { todoStore.toggle(id); }
-  function removeTask(id) { todoStore.remove(id); }
+  const toggleTask = async (id) => { await todoStore.toggle(id); };
+  const removeTask = async (id) => { await todoStore.remove(id); };
 
-  function duplicateTask(id) {
+  const duplicateTask = async (id) => {
     const orig = tasks.find(t => t.id === id);
     if (!orig) return;
     const copy = cloneTask(orig);
     const instanceCopy = TaskFactory.fromJSON(copy);
-    todoStore.add(instanceCopy);
-  }
+    await todoStore.add(instanceCopy);
+  };
 
-  function togglePin(id) {
+  const togglePin = async (id) => {
     const t = tasks.find(x => x.id === id);
     if (!t) return;
-    const next = togglePinned(t);
-    todoStore.update(id, next); 
-  }
+    const patched = { ...t, meta: { ...(t.meta || {}), pinned: !Boolean(t.meta?.pinned) } };
+    await todoStore.update(id, patched);
+  };
 
-  function addTagQuick(id, tag) {
+  const addTagQuick = async (id, tag) => {
     const t = tasks.find(x => x.id === id);
     if (!t || !tag.trim()) return;
     const next = addTags(t, [tag.trim()]);
-    todoStore.update(id, next);
-  }
-  function removeTagQuick(id, tag) {
+    await todoStore.update(id, next);
+  };
+  const removeTagQuick = async (id, tag) => {
     const t = tasks.find(x => x.id === id);
     if (!t) return;
     const next = removeTag(t, tag);
-    todoStore.update(id, next);
-  }
+    await todoStore.update(id, next);
+  };
 
   function startEdit(t) {
     setEditId(t.id);
@@ -165,56 +164,54 @@ export default function App() {
     setEditDue(iso.slice(0, 16));
     setEditTags((t.meta?.tags || []).join(", "));
   }
-
   function cancelEdit() {
-    setEditId(null);
-    setEditTitle("");
-    setEditPriority(2);
-    setEditDue("");
-    setEditTags("");
+    setEditId(null); setEditTitle(""); setEditPriority(2); setEditDue(""); setEditTags("");
   }
-
-  function saveEdit(t) {
+  const saveEdit = async (t) => {
     if (!editTitle.trim()) return;
-
     let patched = { ...t, title: editTitle.trim() };
-
-    if (t.type === "priority") {
-      patched = { ...patched, meta: { ...(patched.meta || {}), priority: Number(editPriority) } };
-    }
-    if (t.type === "deadline") {
-      patched = { ...patched, meta: { ...(patched.meta || {}), due: new Date(editDue).toISOString() } };
-    }
-
-    const tagsArray = editTags.split(",").map(s => s.trim()).filter(Boolean);
-    patched = setTags(patched, tagsArray);
-
-    if (!patched.meta.icon && t.meta?.icon) {
-      patched.meta.icon = t.meta.icon;
-    }
-
-    todoStore.update(t.id, patched);
+    if (t.type === "priority") patched = { ...patched, meta: { ...(patched.meta || {}), priority: Number(editPriority) } };
+    if (t.type === "deadline") patched = { ...patched, meta: { ...(patched.meta || {}), due: new Date(editDue).toISOString() } };
+    patched = setTags(patched, editTags.split(",").map(s => s.trim()).filter(Boolean));
+    if (!patched.meta.icon && t.meta?.icon) patched.meta.icon = t.meta.icon;
+    await todoStore.update(t.id, patched);
     cancelEdit();
-  }
+  };
+
+  const changeBackend = async (e) => {
+    await todoStore.setBackend(e.target.value);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-      {/* Pasek błędu z fasady */}
-      {lastError && (
-        <div className="bg-red-50 text-red-700 text-sm px-4 py-2 border-b border-red-200">
-          Błąd persystencji: {String(lastError.message || lastError)}
+      {/* Pasek statusu backendu + błędy */}
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b bg-white">
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <Database size={16} />
+          <span>Backend:</span>
+          <select className="border rounded-lg px-2 py-1 text-sm" value={backend} onChange={changeBackend}>
+            <option value="localStorage">localStorage</option>
+            <option value="memory">memory</option>
+            <option value="mockApi">mockApi</option>
+          </select>
+          {!ready && <span className="text-slate-400">(ładowanie...)</span>}
         </div>
-      )}
+        {lastError && (
+          <div className="bg-red-50 text-red-700 text-xs px-2 py-1 rounded border border-red-200">
+            Błąd persystencji: {String(lastError.message || lastError)}
+          </div>
+        )}
+      </div>
 
-      <header className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-3xl font-bold tracking-tight">Todo – Decorator</h1>
+      <header className="mx-auto max-w-3xl px-4 py-8">
+        <h1 className="text-3xl font-bold tracking-tight">Todo – Bridge</h1>
         <p className="text-slate-500 mt-1">
-          Dekoratory: przypinanie (pinned) i tagi (tags) • + Prototype • + Facade • + Singleton • + Factory • + Edycja.
+          Oddzielenie abstrakcji Storage od implementacji backendów (localStorage / memory / mockApi).
         </p>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 pb-24">
-        {/* Composer (add) */}
+        {/* Composer */}
         <form onSubmit={addTask} className="bg-white rounded-2xl shadow p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
           <div className="md:col-span-2 flex items-center gap-2 border rounded-xl px-3">
             <PlusCircle />
@@ -277,7 +274,6 @@ export default function App() {
               <option value="type">Typ</option>
               <option value="priority">Priorytet</option>
               <option value="due">Termin</option>
-              <option value="pinned">Pinned first</option>
             </select>
           </div>
         </div>
@@ -362,7 +358,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Decorator: pin toggle */}
+                {/* Pin toggle */}
                 <button
                   onClick={() => togglePin(t.id)}
                   className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-xl hover:bg-slate-100"
@@ -373,7 +369,6 @@ export default function App() {
 
                 {!isEditing ? (
                   <>
-                    {/* Quick add tag (mały input pojawia się przy hoverze elementu – tu prosto: prompt) */}
                     <button
                       onClick={() => {
                         const tag = prompt("Dodaj tag (np. 'school'):");
@@ -430,9 +425,6 @@ export default function App() {
           })}
         </ul>
 
-        {/* Usuwanie tagów — małe przyciski „×” na chipach pojawiają się tylko w trybie edycji.
-            Quick remove dla trybu nieedytowanego dodaliśmy przez removeTagQuick (możesz dorobić menu). */}
-
         {sorted.length === 0 && (
           <div className="text-center text-slate-500 mt-10">
             Lista jest pusta. Dodaj pierwsze zadanie powyżej.
@@ -441,7 +433,7 @@ export default function App() {
       </main>
 
       <footer className="text-center text-xs text-slate-400 py-10">
-        Wzorzec: Decorator + Prototype + Facade + Singleton + Factory )
+        Wzorzec: Bridge + Decorator + Prototype + Singleton + Factory + Edycja
       </footer>
     </div>
   );

@@ -1,4 +1,4 @@
-import { PersistenceFacade } from "./persistence/facade";
+import { StorageBridge, LocalStorageBackend, MemoryBackend, MockApiBackend } from "./bridge/storage";
 
 class Emitter {
   constructor(){ this.listeners = new Set(); }
@@ -17,55 +17,76 @@ class TodoStore {
   constructor(){
     if (TodoStore.#instance) return TodoStore.#instance;
 
-    this.persistence = new PersistenceFacade();
-
-    this.emitter = new Emitter();      
+    this.emitter = new Emitter();       
     this.errorEmitter = new Emitter();  
+    this.backendEmitter = new Emitter();
 
-    const { ok, data, error } = this.persistence.load();
-    this.state = ok ? data : [];
-    if (!ok) this.#notifyError(error);
+    this.bridge = new StorageBridge(new LocalStorageBackend("factory-method-todos"));
+    this.state = [];
+    this.ready = false;
+
+    this.reload();
   }
 
- 
-  #save() {
-    const res = this.persistence.save(this.state);
+  async reload() {
+    try {
+      const { ok, data, error } = await this.bridge.load();
+      this.state = ok ? data : [];
+      if (!ok) this.#notifyError(error);
+      this.ready = true;
+      this.emitter.emit(this.state);
+    } catch (e) {
+      this.#notifyError(e);
+    }
+  }
+
+  async #save() {
+    const res = await this.bridge.save(this.state);
     if (!res.ok) this.#notifyError(res.error);
     return res.ok;
   }
-  #set(next){
+
+  async #set(next){
     this.state = next;
-    this.#save();
+    await this.#save();
     this.emitter.emit(this.state);
   }
+
   #notifyError(error) {
-    console.error("[TodoStore persistence error]", error);
+    console.error("[TodoStore error]", error);
     this.errorEmitter.emit(error);
   }
 
-  add(task){ this.#set([task, ...this.state]); }
-  remove(id){ this.#set(this.state.filter(t => t.id !== id)); }
-  toggle(id){
-    this.#set(this.state.map(t => t.id === id ? ({ ...t, completed: !t.completed }) : t));
+  async add(task){ await this.#set([task, ...this.state]); }
+  async remove(id){ await this.#set(this.state.filter(t => t.id !== id)); }
+  async toggle(id){
+    await this.#set(this.state.map(t => t.id === id ? ({ ...t, completed: !t.completed }) : t));
   }
-  update(id, patchOrFn){
+  async update(id, patchOrWhole){
     const next = this.state.map(t => {
       if (t.id !== id) return t;
-      const patch = typeof patchOrFn === "function" ? patchOrFn(t) : patchOrFn;
-      return { ...t, ...patch, meta: { ...t.meta, ...(patch?.meta || {}) } };
+      if (patchOrWhole && patchOrWhole.id) return { ...patchOrWhole };
+      const patch = typeof patchOrWhole === "function" ? patchOrWhole(t) : (patchOrWhole || {});
+      return { ...t, ...patch, meta: { ...t.meta, ...(patch.meta || {}) } };
     });
-    this.#set(next);
+    await this.#set(next);
   }
 
-  setPersistenceFacade(facade){
-    this.persistence = facade;
-    const { ok, data, error } = this.persistence.load();
-    if (ok) {
-      this.state = data;
-      this.emitter.emit(this.state);
-    } else {
-      this.#notifyError(error);
+  async setBackend(kind){
+    let backend;
+    switch (kind) {
+      case "memory": backend = new MemoryBackend([]); break;
+      case "mockApi": backend = new MockApiBackend({ delay: 250 }); break;
+      case "localStorage":
+      default: backend = new LocalStorageBackend("factory-method-todos");
     }
+    this.bridge.setBackend(backend);
+    this.backendEmitter.emit(this.backendName());
+    await this.reload();
+  }
+
+  backendName(){
+    return this.bridge.name();
   }
 }
 
