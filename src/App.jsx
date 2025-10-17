@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import { useStore } from "./StoreContext";
 import { cloneTask } from "./prototype";
-// import { TaskBuilder } from "./taskBuilder";
 
 class Task {
   constructor(p) {
@@ -69,7 +68,7 @@ function IconByName({ name, size = 18 }) {
 }
 
 export default function App() {
-  const { tasks, todoStore } = useStore();
+  const { tasks, todoStore, lastError } = useStore();
 
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("simple");
@@ -100,20 +99,11 @@ export default function App() {
     setError("");
 
     try {
-      // Wariant bez Buildera:
       const baseProps = { title: title.trim() };
       if (!baseProps.title) throw new Error("Brak tytułu zadania.");
       if (kind === "priority") baseProps.priority = Number(priority);
       if (kind === "deadline") baseProps.due = new Date(due).toISOString();
       const task = TaskFactory.create(kind, baseProps);
-
-      // Wariant z Builderem:
-      // const builder = new TaskBuilder().title(title).type(kind);
-      // if (kind === "priority") builder.priority(priority);
-      // if (kind === "deadline") builder.due(due);
-      // const props = builder.build();
-      // const task = TaskFactory.create(kind, props);
-
       todoStore.add(task);
       setTitle("");
     } catch (err) {
@@ -127,7 +117,7 @@ export default function App() {
   function duplicateTask(id) {
     const orig = tasks.find(t => t.id === id);
     if (!orig) return;
-    const copy = cloneTask(orig); // domyślnie "(copy)" + nowe id/createdAt
+    const copy = cloneTask(orig);
     const instanceCopy = TaskFactory.fromJSON(copy);
     todoStore.add(instanceCopy);
   }
@@ -157,7 +147,6 @@ export default function App() {
     if (t.type === "deadline") {
       patch.meta = { due: new Date(editDue).toISOString() };
     }
-
     if (t.meta?.icon) {
       patch.meta = { ...(patch.meta || {}), icon: t.meta.icon };
     }
@@ -168,10 +157,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
+      {/* Pasek błędu z fasady */}
+      {lastError && (
+        <div className="bg-red-50 text-red-700 text-sm px-4 py-2 border-b border-red-200">
+          Błąd persystencji: {String(lastError.message || lastError)}
+        </div>
+      )}
+
       <header className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-3xl font-bold tracking-tight">Todo – Prototype + Edit</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Todo – Facade</h1>
         <p className="text-slate-500 mt-1">
-          Klonowanie (Prototype) + Singleton Store + Factory Method + <strong>edytor inline</strong>.
+          Fasada persystencji (Facade) + Prototype + Singleton Store + Factory Method + Edycja inline.
         </p>
       </header>
 
@@ -243,7 +239,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* List */}
+        {/* Lista */}
         <ul className="mt-4 space-y-3">
           {sorted.map(t => {
             const isEditing = editId === t.id;
@@ -358,7 +354,7 @@ export default function App() {
       </main>
 
       <footer className="text-center text-xs text-slate-400 py-10">
-        Wzorzec: Prototype + Singleton Store + Factory Method + Edycja inline
+        Wzorzec: Facade + Prototype + Singleton Store + Factory Method + Edycja inline
       </footer>
     </div>
   );

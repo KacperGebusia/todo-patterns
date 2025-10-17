@@ -31,7 +31,6 @@ export class TaskBuilder {
     return this;
   }
   build(){
-    // Walidacje
     if (!this._title) throw new Error("Brak tytułu zadania.");
     if (this._type === "priority" && (!this._meta.priority || Number.isNaN(this._meta.priority))) {
       throw new Error("Nieprawidłowy priorytet (1–5).");

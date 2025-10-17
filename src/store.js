@@ -1,87 +1,70 @@
-const DEV = false; // true - włączone logi akcji
+import { PersistenceFacade } from "./persistence/facade";
 
 class Emitter {
-  constructor() {
-    this.listeners = new Set();
-  }
-  on(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-  emit(payload) {
-    for (const fn of this.listeners) fn(payload);
-  }
+  constructor(){ this.listeners = new Set(); }
+  on(fn){ this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  emit(payload){ for (const fn of this.listeners) fn(payload); }
 }
 
 class TodoStore {
   static #instance;
 
-  static getInstance() {
+  static getInstance(){
     if (!TodoStore.#instance) TodoStore.#instance = new TodoStore();
     return TodoStore.#instance;
   }
 
-  constructor() {
+  constructor(){
     if (TodoStore.#instance) return TodoStore.#instance;
-    this.emitter = new Emitter();
-    this.key = "factory-method-todos";
-    this.state = this.#load();
-    if (DEV) console.log("[store] init", this.state);
+
+    this.persistence = new PersistenceFacade();
+
+    this.emitter = new Emitter();       
+    this.errorEmitter = new Emitter();  
+
+    const { ok, data, error } = this.persistence.load();
+    this.state = ok ? data : [];
+    if (!ok) this.#notifyError(error);
   }
 
-  #load() {
-    try {
-      return JSON.parse(localStorage.getItem(this.key)) ?? [];
-    } catch {
-      return [];
-    }
-  }
   #save() {
-    try {
-      localStorage.setItem(this.key, JSON.stringify(this.state));
-    } catch (e) {
-      console.error("[store] save error", e);
-    }
+    const res = this.persistence.save(this.state);
+    if (!res.ok) this.#notifyError(res.error);
+    return res.ok;
   }
-
-  #publish(next) {
-    this.state = Array.isArray(next) ? [...next] : [];
+  #set(next){
+    this.state = next;
     this.#save();
-    if (DEV) console.log("[store] publish", this.state);
     this.emitter.emit(this.state);
   }
-
-  add(task) {
-    if (DEV) console.log("[store] add", task);
-    this.#publish([task, ...this.state]);
+  #notifyError(error) {
+    console.error("[TodoStore persistence error]", error);
+    this.errorEmitter.emit(error);
   }
 
-  remove(id) {
-    if (DEV) console.log("[store] remove", id);
-    this.#publish(this.state.filter((t) => t.id !== id));
+  add(task){ this.#set([task, ...this.state]); }
+  remove(id){ this.#set(this.state.filter(t => t.id !== id)); }
+  toggle(id){
+    this.#set(this.state.map(t => t.id === id ? ({ ...t, completed: !t.completed }) : t));
   }
-
-  toggle(id) {
-    if (DEV) console.log("[store] toggle", id);
-    this.#publish(
-      this.state.map((t) =>
-        t.id === id ? { ...t, completed: !t.completed } : t
-      )
-    );
-  }
-
-  update(id, patchOrFn) {
-    const next = this.state.map((t) => {
+  update(id, patchOrFn){
+    const next = this.state.map(t => {
       if (t.id !== id) return t;
       const patch = typeof patchOrFn === "function" ? patchOrFn(t) : patchOrFn;
       return { ...t, ...patch, meta: { ...t.meta, ...(patch?.meta || {}) } };
     });
-    this.#publish(next);
+    this.#set(next);
   }
 
-  replaceAll(tasks) {
-    if (DEV) console.log("[store] replaceAll", tasks);
-    this.#publish(tasks);
+  setPersistenceFacade(facade){
+    this.persistence = facade;
+    const { ok, data, error } = this.persistence.load();
+    if (ok) {
+      this.state = data;
+      this.emitter.emit(this.state);
+    } else {
+      this.#notifyError(error);
+    }
   }
 }
 
