@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { PlusCircle, Star, CalendarDays, Trash2, CheckCircle2, Circle, ArrowUpDown } from "lucide-react";
+import { PlusCircle, Star, CalendarDays, Trash2, CheckCircle2, Circle, ArrowUpDown, AlertCircle } from "lucide-react";
 import { useStore } from "./StoreContext";
+import { TaskBuilder } from "./taskBuilder";
 
 class Task {
   constructor(p) {
@@ -11,9 +12,7 @@ class Task {
     this.type = p.type || "simple";
     this.createdAt = p.createdAt ?? Date.now();
   }
-  toggle() {
-    this.completed = !this.completed;
-  }
+  toggle() { this.completed = !this.completed; }
   toJSON() {
     return {
       id: this.id,
@@ -25,39 +24,24 @@ class Task {
     };
   }
 }
-
 class SimpleTask extends Task {
-  constructor(p) {
-    super({ ...p, type: "simple", meta: { icon: "circle" } });
-  }
+  constructor(p) { super({ ...p, type: "simple", meta: { icon: "circle", ...(p.meta||{}) } }); }
 }
-
 class PriorityTask extends Task {
-  constructor(p) {
-    super({ ...p, type: "priority", meta: { icon: "star", priority: p.priority ?? 1 } });
-  }
+  constructor(p) { super({ ...p, type: "priority", meta: { icon: "star", priority: p.meta?.priority ?? p.priority ?? 1 } }); }
 }
-
 class DeadlineTask extends Task {
-  constructor(p) {
-    super({ ...p, type: "deadline", meta: { icon: "calendar", due: p.due ?? new Date().toISOString() } });
-  }
+  constructor(p) { super({ ...p, type: "deadline", meta: { icon: "calendar", due: p.meta?.due ?? p.due ?? new Date().toISOString() } }); }
 }
-
 class TaskFactory {
   static create(kind, props = {}) {
     switch (kind) {
-      case "priority":
-        return new PriorityTask(props);
-      case "deadline":
-        return new DeadlineTask(props);
-      default:
-        return new SimpleTask(props);
+      case "priority": return new PriorityTask(props);
+      case "deadline": return new DeadlineTask(props);
+      default: return new SimpleTask(props);
     }
   }
-  static fromJSON(json) {
-    return TaskFactory.create(json.type, json);
-  }
+  static fromJSON(json) { return TaskFactory.create(json.type, json); }
 }
 
 function TypeBadge({ type }) {
@@ -74,7 +58,6 @@ function TypeBadge({ type }) {
     </span>
   );
 }
-
 function IconByName({ name, size = 18 }) {
   const icons = { circle: Circle, star: Star, calendar: CalendarDays };
   const Cmp = icons[name] || Circle;
@@ -88,6 +71,7 @@ export default function App() {
   const [priority, setPriority] = useState(2);
   const [due, setDue] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 16));
   const [sortBy, setSortBy] = useState("createdAt");
+  const [error, setError] = useState("");
 
   const sorted = useMemo(() => {
     const arr = [...tasks];
@@ -101,28 +85,32 @@ export default function App() {
 
   function addTask(e) {
     e?.preventDefault?.();
-    if (!title.trim()) return;
-    const props = { title: title.trim() };
-    if (kind === "priority") props.priority = Number(priority);
-    if (kind === "deadline") props.due = new Date(due).toISOString();
-    const t = TaskFactory.create(kind, props);
-    todoStore.add(t);
-    setTitle("");
+    setError("");
+    try {
+      const builder = new TaskBuilder()
+        .title(title)
+        .type(kind);
+
+      if (kind === "priority") builder.priority(priority);
+      if (kind === "deadline") builder.due(due);
+
+      const props = builder.build(); 
+      const task = TaskFactory.create(kind, props);
+      todoStore.add(task);
+      setTitle("");
+    } catch (err) {
+      setError(err.message || "Nie udało się dodać zadania.");
+    }
   }
 
-  function toggleTask(id) {
-    todoStore.toggle(id);
-  }
-
-  function removeTask(id) {
-    todoStore.remove(id);
-  }
+  function toggleTask(id) { todoStore.toggle(id); }
+  function removeTask(id) { todoStore.remove(id); }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <header className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-3xl font-bold tracking-tight">Todo – Singleton Store</h1>
-        <p className="text-slate-500 mt-1">Globalny store (Singleton) z React Contextem.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Todo – Builder</h1>
+        <p className="text-slate-500 mt-1">Tworzenie zadań krokami (Builder) + Singleton Store + Factory Method.</p>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 pb-24">
@@ -167,6 +155,12 @@ export default function App() {
 
           <button type="submit" className="rounded-xl bg-slate-900 text-white px-4 py-2">Dodaj</button>
         </form>
+
+        {error && (
+          <div className="mt-3 text-sm text-red-600 flex items-center gap-2">
+            <AlertCircle size={16} /> {error}
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex items-center justify-between mt-6">
@@ -225,7 +219,6 @@ export default function App() {
           ))}
         </ul>
 
-        {/* Empty state */}
         {sorted.length === 0 && (
           <div className="text-center text-slate-500 mt-10">
             Lista jest pusta. Dodaj pierwsze zadanie powyżej.
@@ -234,7 +227,7 @@ export default function App() {
       </main>
 
       <footer className="text-center text-xs text-slate-400 py-10">
-        Wzorzec: Singleton • Globalny Store + Context API
+        Wzorzec: Builder + Singleton Store + Factory Method
       </footer>
     </div>
   );

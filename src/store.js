@@ -1,4 +1,3 @@
-// Singleton store z prostym EventEmitterem + persystencją
 
 class Emitter {
   constructor(){ this.listeners = new Set(); }
@@ -21,7 +20,6 @@ class TodoStore {
     this.state = this.#load();
   }
 
-  // --- persystencja ---
   #load(){
     try { return JSON.parse(localStorage.getItem(this.key)) ?? []; } catch { return []; }
   }
@@ -33,7 +31,6 @@ class TodoStore {
     this.emitter.emit(this.state);
   }
 
-  // --- API ---
   add(task){ this.#set([task, ...this.state]); }
   remove(id){ this.#set(this.state.filter(t => t.id !== id)); }
   toggle(id){
