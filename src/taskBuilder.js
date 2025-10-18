@@ -1,3 +1,5 @@
+//Builder - deklaracja
+
 export class TaskBuilder {
   constructor(){
     this.reset();

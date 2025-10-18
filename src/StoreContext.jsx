@@ -9,6 +9,7 @@ export function StoreProvider({ children }){
   const [backend, setBackend] = useState(todoStore.backendName());
   const [ready, setReady] = useState(todoStore.ready);
 
+  //Singleton - wykorzystanie (store)
   useEffect(() => {
     const offState = todoStore.emitter.on((s) => { setTasks(s); setReady(true); });
     const offError = todoStore.errorEmitter.on((err) => setLastError(err));

@@ -1,3 +1,5 @@
+// Prototype - deklaracja
+
 export function cloneTask(task, overrides = {}) {
   const copy = (typeof structuredClone === "function")
     ? structuredClone(task)

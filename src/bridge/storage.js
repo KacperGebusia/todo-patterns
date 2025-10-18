@@ -1,5 +1,6 @@
+//Bridge - deklaracja
+
 export class Storage {
-  // interfejs
   save(_tasks) { throw new Error("Not implemented"); }
   load() { throw new Error("Not implemented"); }
   name() { return "abstract"; }

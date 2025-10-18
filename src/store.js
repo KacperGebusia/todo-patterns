@@ -9,6 +9,8 @@ class Emitter {
 class TodoStore {
   static #instance;
 
+  // Singleton - deklaracja
+
   static getInstance(){
     if (!TodoStore.#instance) TodoStore.#instance = new TodoStore();
     return TodoStore.#instance;
@@ -21,6 +23,8 @@ class TodoStore {
     this.errorEmitter = new Emitter();  
     this.backendEmitter = new Emitter();
 
+    // Bridge - wykorzystanie 
+    
     this.bridge = new StorageBridge(new LocalStorageBackend("factory-method-todos"));
     this.state = [];
     this.ready = false;

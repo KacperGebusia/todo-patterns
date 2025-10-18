@@ -1,3 +1,5 @@
+// Decorator - deklaracja
+
 function normalizeTags(arr) {
   const a = (arr ?? [])
     .map(x => String(x || "").trim())

@@ -1,3 +1,5 @@
+// Facade - deklaracja
+
 class LocalStorageDriver {
   constructor(key = "todos") {
     this.key = key;

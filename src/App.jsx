@@ -37,6 +37,8 @@ class PriorityTask extends Task {
 class DeadlineTask extends Task {
   constructor(p) { super({ ...p, type: "deadline", meta: { icon: "calendar", due: p.meta?.due ?? p.due ?? new Date().toISOString() } }); }
 }
+
+// Factory - deklaracja
 class TaskFactory {
   static create(kind, props = {}) {
     switch (kind) {
@@ -79,6 +81,7 @@ function Tag({ children, onRemove }) {
 }
 
 export default function App() {
+  // Store - wykorzystanie
   const { tasks, todoStore, lastError, backend, ready } = useStore();
 
   const [title, setTitle] = useState("");
@@ -112,6 +115,8 @@ export default function App() {
     e?.preventDefault?.();
     setError("");
 
+    //Factory - wykorzystanie
+
     try {
       const baseProps = { title: title.trim() };
       if (!baseProps.title) throw new Error("Brak tytułu zadania.");
@@ -125,8 +130,32 @@ export default function App() {
     }
   }
 
+  // Builder - wykorzystanie
+
+  // function addTask(e) {
+  //   e?.preventDefault?.();
+  //   setError("");
+  //   try {
+  //     const builder = new TaskBuilder()
+  //       .title(title)
+  //       .type(kind);
+
+  //     if (kind === "priority") builder.priority(priority);
+  //     if (kind === "deadline") builder.due(due);
+
+  //     const props = builder.build(); 
+  //     const task = TaskFactory.create(kind, props);
+  //     todoStore.add(task);
+  //     setTitle("");
+  //   } catch (err) {
+  //     setError(err.message || "Nie udało się dodać zadania.");
+  //   }
+  // }
+
   const toggleTask = async (id) => { await todoStore.toggle(id); };
   const removeTask = async (id) => { await todoStore.remove(id); };
+
+  // Prototype - wykorzystanie
 
   const duplicateTask = async (id) => {
     const orig = tasks.find(t => t.id === id);
@@ -135,6 +164,8 @@ export default function App() {
     const instanceCopy = TaskFactory.fromJSON(copy);
     await todoStore.add(instanceCopy);
   };
+
+  // Decorator - wykorzystanie
 
   const togglePin = async (id) => {
     const t = tasks.find(x => x.id === id);
