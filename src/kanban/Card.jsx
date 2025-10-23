@@ -1,4 +1,4 @@
-// Pojedyncza karta
+// Pojedyncza karta (UI)
 import { CalendarDays, Star, GripVertical } from "lucide-react";
 export default function Card({ task, onEdit, onDuplicate, onDelete, draggableProps }) {
   return (

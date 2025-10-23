@@ -1,9 +1,9 @@
-// Kolumna (DnD: "id|index")
+// Kolumna Kanban (minimalny DnD)
 import Card from "./Card";
 export default function Column({ title, status, tasks, onDropCard, onEdit, onDuplicate, onDelete }) {
   function onDragOver(e){ e.preventDefault(); }
   function onDrop(e){
-    const payload = e.dataTransfer.getData("text/plain");
+    const payload = e.dataTransfer.getData("text/plain"); // "id|index"
     const [id, indexStr] = (payload||"").split("|");
     const toIndex = Number(indexStr);
     onDropCard(id, status, Number.isFinite(toIndex) ? toIndex : tasks.length);

@@ -1,7 +1,7 @@
 {
-  "name": "todo-kanban-patterns-commented",
+  "name": "todo-kanban-command-memento-commented",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": { "dev": "vite", "build": "vite build", "preview": "vite preview" },
   "dependencies": { "lucide-react": "^0.321.0", "react": "^18.3.1", "react-dom": "^18.3.1" },

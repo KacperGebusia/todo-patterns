@@ -1,5 +1,4 @@
 // [PATTERN: Builder] — DEKLARACJA
-
 export class TaskBuilder {
   constructor(){ this.reset(); }
   reset(){ this._title=""; this._type="simple"; this._meta={}; this._completed=false; this._status="todo"; return this; }

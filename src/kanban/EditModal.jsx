@@ -1,25 +1,28 @@
 // Modal edycji
+// [PATTERN: Decorator] • [Command]
 import { useEffect, useState } from "react";
 import { X, Save, Star, CalendarDays } from "lucide-react";
-import { useStore } from "../store/StoreContext";
 import { setTags } from "../decorators";
+import { commandBus } from "../command/CommandBus";
+import { UpdateTaskCommand } from "../command/commands/UpdateTaskCommand";
 const STATUSES = [{ value: "todo", label: "To Do" },{ value: "in_progress", label: "In Progress" },{ value: "blocked", label: "Blocked" },{ value: "done", label: "Done" }];
 export default function EditModal({ task, onClose }) {
-  const open = Boolean(task); const { todoStore } = useStore();
-  const [title,setTitle]=useState(""); const [type,setType]=useState("simple"); const [status,setStatus]=useState("todo");
-  const [priority,setPriority]=useState(2); const [due,setDue]=useState(""); const [tags,setTagsCsv]=useState("");
-  useEffect(()=>{ if(!task) return; setTitle(task.title); setType(task.type); setStatus(task.status??"todo"); setPriority(task.meta?.priority??2);
-    const iso = task.meta?.due ? new Date(task.meta.due).toISOString() : new Date().toISOString(); setDue(iso.slice(0,16)); setTagsCsv((task.meta?.tags||[]).join(", ")); },[task]);
-  async function onSave(){
-    if(!task) return; const tagsArray = tags.split(",").map(s=>s.trim()).filter(Boolean);
-    let patched = { ...task, title: title.trim()||task.title, type, status, meta: { ...(task.meta||{}) } };
-    if(type==="priority") patched.meta.priority = Number(priority);
-    if(type==="deadline") patched.meta.due = new Date(due).toISOString();
+  const open = Boolean(task);
+  const [title, setTitle] = useState(""); const [type, setType] = useState("simple"); const [status, setStatus] = useState("todo");
+  const [priority, setPriority] = useState(2); const [due, setDue] = useState(""); const [tags, setTagsCsv] = useState("");
+  useEffect(() => { if (!task) return; setTitle(task.title); setType(task.type); setStatus(task.status ?? "todo"); setPriority(task.meta?.priority ?? 2);
+    const iso = task.meta?.due ? new Date(task.meta.due).toISOString() : new Date().toISOString(); setDue(iso.slice(0, 16)); setTagsCsv((task.meta?.tags || []).join(", ")); }, [task]);
+  async function onSave() {
+    if (!task) return;
+    const tagsArray = tags.split(",").map(s=>s.trim()).filter(Boolean);
+    let patched = { ...task, title: title.trim() || task.title, type, status, meta: { ...(task.meta || {}) } };
+    if (type === "priority") patched.meta.priority = Number(priority);
+    if (type === "deadline") patched.meta.due = new Date(due).toISOString();
     patched = setTags(patched, tagsArray);
-    if(!patched.meta.icon && task.meta?.icon) patched.meta.icon = task.meta.icon;
-    await todoStore.update(task.id, patched); onClose?.();
+    if (!patched.meta.icon && task.meta?.icon) patched.meta.icon = task.meta.icon;
+    await commandBus.execute(new UpdateTaskCommand(task.id, patched)); onClose?.();
   }
-  if(!open) return null;
+  if (!open) return null;
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div className="bg-white w-full max-w-xl rounded-2xl shadow-lg p-4">
@@ -54,9 +57,10 @@ export default function EditModal({ task, onClose }) {
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onSave} className="rounded-xl bg-slate-900 text-white px-4 py-2 inline-flex items-center gap-2"><Save size={16}/> Zapisz</button>
+          <button onClick={onSave} className="rounded-xl bg-slate-900 text-white px-4 py-2 inline-flex items-center gap-2">Zapisz</button>
           <button onClick={onClose} className="rounded-xl bg-slate-100 px-4 py-2">Anuluj</button>
         </div>
       </div>
     </div>
-  ); }
+  );
+}

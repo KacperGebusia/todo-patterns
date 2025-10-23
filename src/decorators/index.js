@@ -1,5 +1,5 @@
+// [PATTERN: Decorator] — DEKLARACJA
 function normalizeTags(arr){ const a=(arr??[]).map(x=>String(x||"").trim()).filter(Boolean); return Array.from(new Set(a)); }
-
 export function togglePinned(task){
   const pinned = !Boolean(task?.meta?.pinned);
   return { ...task, meta: { ...(task.meta||{}), pinned, icon: task?.meta?.icon ?? "circle" } };

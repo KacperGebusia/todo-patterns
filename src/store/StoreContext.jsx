@@ -1,17 +1,12 @@
-// React Context jako adapter do Observera ze store
-// [PATTERN: Observer] — UŻYCIE
-
+// React Context jako adapter do Observera
 import { createContext, useContext, useEffect, useState } from "react";
 import { todoStore } from "./index";
-
 const StoreCtx = createContext({ tasks: [], todoStore, lastError: null, backend: "unknown", ready: false });
-
 export function StoreProvider({ children }){
   const [tasks, setTasks] = useState(todoStore.state);
   const [lastError, setLastError] = useState(null);
   const [backend, setBackend] = useState(todoStore.backendName());
   const [ready, setReady] = useState(todoStore.ready);
-
   useEffect(() => {
     const offState = todoStore.emitter.on((s) => { setTasks(s); setReady(true); });
     const offError = todoStore.errorEmitter.on((e) => setLastError(e));
@@ -22,12 +17,6 @@ export function StoreProvider({ children }){
     }
     return () => { offState(); offError(); offBackend(); };
   }, []);
-
-  return (
-    <StoreCtx.Provider value={{ tasks, todoStore, lastError, backend, ready }}>
-      {children}
-    </StoreCtx.Provider>
-  );
+  return (<StoreCtx.Provider value={{ tasks, todoStore, lastError, backend, ready }}>{children}</StoreCtx.Provider>);
 }
-
 export const useStore = () => useContext(StoreCtx);

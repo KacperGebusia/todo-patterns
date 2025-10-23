@@ -1,19 +1,22 @@
 // Formularz dodawania
+// [PATTERN: Builder] • [Factory Method] • [Command]
 import { useState } from "react";
 import { PlusCircle } from "lucide-react";
 import { TaskFactory } from "../domain/factory";
 import { TaskBuilder } from "../builder/TaskBuilder";
-import { useStore } from "../store/StoreContext";
+import { commandBus } from "../command/CommandBus";
+import { AddTaskCommand } from "../command/commands/AddTaskCommand";
 const STATUSES = [{ value: "todo", label: "To Do" },{ value: "in_progress", label: "In Progress" },{ value: "blocked", label: "Blocked" },{ value: "done", label: "Done" }];
 export default function Composer() {
-  const { todoStore } = useStore();
   const [title, setTitle] = useState(""); const [type, setType] = useState("simple"); const [status, setStatus] = useState("todo");
-  const [priority, setPriority] = useState(2); const [due, setDue] = useState(()=>new Date(Date.now()+86400000).toISOString().slice(0,16)); const [error, setError] = useState("");
+  const [priority, setPriority] = useState(2); const [due, setDue] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 16));
+  const [error, setError] = useState("");
   async function onSubmit(e){ e?.preventDefault?.(); setError(""); try{
       const b = new TaskBuilder().title(title).type(type).status(status);
       if (type === "priority") b.priority(priority);
       if (type === "deadline") b.due(due);
-      const props = b.build(); const task = TaskFactory.create(type, props); await todoStore.createIn(status, task); setTitle("");
+      const props = b.build(); const task = TaskFactory.create(type, props);
+      await commandBus.execute(new AddTaskCommand(task, status)); setTitle("");
     } catch(err){ setError(err?.message || "Nie udało się dodać zadania."); } }
   return (
     <form onSubmit={onSubmit} className="bg-white rounded-2xl shadow p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
