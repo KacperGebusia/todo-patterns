@@ -1,7 +1,7 @@
 // src/kanban/Board.jsx
-// Wzorce: Interpreter • Iterator • State(FSM) • Command+Memento • Prototype • Factory • Strategy(sort)
+// Wzorce: Interpreter • Iterator • State(FSM) • Command+Memento • Prototype • Factory • Strategy(sort) • Mediator
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Column from "./Column";
 import Composer from "./Composer";
 import EditModal from "./EditModal";
@@ -27,15 +27,24 @@ import {
   MoveCardCommand,
   UpdateTaskCommand,
 } from "../command";
+import { uiBus } from "../mediator/UIBus";
 
 const PAGE_SIZE = 12;
 
 export default function Board({ sortKey = "kanbanOrder" }) {
   const { tasks } = useStore();
   const safeTasks = Array.isArray(tasks) ? tasks : [];
-  const [editing, setEditing] = useState(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+
+  // Mediator: słuchaj zmian zapytania z SearchBar (SET_QUERY)
+  useEffect(() => {
+    const off = uiBus.on("SET_QUERY", ({ query }) => {
+      setQuery(query ?? "");
+      setPage(1);
+    });
+    return off;
+  }, []);
 
   const comparator = useMemo(() => getComparator(sortKey), [sortKey]);
 
@@ -57,7 +66,7 @@ export default function Board({ sortKey = "kanbanOrder" }) {
   const byStatus = (s) =>
     safeTasks
       .filter((t) => (t.status ?? (t.completed ? "done" : "todo")) === s)
-      .sort(comparator); // sortowanie według strategii (tylko widok; nie zmienia order)
+      .sort(comparator);
 
   // === Command + Memento + FSM ===
   async function onDropCard(id, status, toIndex) {
@@ -68,13 +77,17 @@ export default function Board({ sortKey = "kanbanOrder" }) {
   async function onDuplicate(task) {
     const copy = TaskFactory.fromJSON(cloneTask(task));
     await commandBus.execute(new CreateInCommand(task.status ?? "todo", copy));
+    uiBus.emit("TOAST", { type: "success", message: "Zduplikowano kartę" });
   }
 
   async function onDelete(task) {
     await commandBus.execute(new RemoveTaskCommand(task.id));
+    uiBus.emit("TOAST", { type: "info", message: "Usunięto kartę" });
   }
 
-  function onEdit(task) { setEditing(task); }
+  function onEdit(task) {
+    uiBus.emit("OPEN_EDIT", { task }); // zamiast lokalnego state
+  }
 
   async function onChangeState(task, toState) {
     if (!canTo(task.status, toState)) return;
@@ -83,12 +96,10 @@ export default function Board({ sortKey = "kanbanOrder" }) {
     await commandBus.execute(new UpdateTaskCommand(task.id, { completed: patched.completed }));
   }
 
-  function handleQuery(newQ) { setQuery(newQ); setPage(1); }
-
   return (
     <div className="space-y-6">
       <Composer />
-      <SearchBar initial={query} onQuery={handleQuery} />
+      <SearchBar />
 
       {query.trim() ? (
         <ResultsList
@@ -111,7 +122,8 @@ export default function Board({ sortKey = "kanbanOrder" }) {
         </div>
       )}
 
-      <EditModal task={editing} onClose={() => setEditing(null)} />
+      {/* EditModal nie dostaje propsów – słucha Mediatora */}
+      <EditModal />
     </div>
   );
 }

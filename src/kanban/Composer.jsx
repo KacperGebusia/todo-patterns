@@ -1,12 +1,11 @@
 // src/kanban/Composer.jsx
-// Wzorce: Builder • Factory Method • Command (CreateInCommand)
-
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PlusCircle } from "lucide-react";
 import { TaskFactory } from "../domain/factory";
 import { TaskBuilder } from "../builder/TaskBuilder";
 import { useStore } from "../store/StoreContext";
 import { commandBus, CreateInCommand } from "../command";
+import { uiBus } from "../mediator/UIBus";
 
 const STATUSES = [
   { value: "todo", label: "To Do" },
@@ -25,27 +24,31 @@ export default function Composer() {
     new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 16)
   );
   const [error, setError] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const off = uiBus.on("FOCUS_COMPOSER", () => {
+      inputRef.current?.focus();
+    });
+    return off;
+  }, []);
 
   async function onSubmit(e) {
     e?.preventDefault?.();
     setError("");
 
     try {
-      // [Builder] – tworzymy opis zadania
       const b = new TaskBuilder().title(title).type(type).status(status);
       if (type === "priority") b.priority(priority);
       if (type === "deadline") b.due(due);
       const props = b.build();
-
-      // [Factory Method] – tworzymy instancję Task
       const task = TaskFactory.create(type, props);
-
-      // [Command + Memento] – zapisujemy zmianę przez CommandBus
       await commandBus.execute(new CreateInCommand(status, task));
-
       setTitle("");
+      uiBus.emit("TOAST", { type: "success", message: "Dodano kartę" });
     } catch (err) {
       setError(err?.message || "Nie udało się dodać zadania.");
+      uiBus.emit("TOAST", { type: "error", message: "Błąd dodawania" });
     }
   }
 
@@ -57,6 +60,7 @@ export default function Composer() {
       <div className="md:col-span-2 flex items-center gap-2 border rounded-xl px-3">
         <PlusCircle />
         <input
+          ref={inputRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Dodaj kartę..."
@@ -64,11 +68,7 @@ export default function Composer() {
         />
       </div>
 
-      <select
-        value={type}
-        onChange={(e) => setType(e.target.value)}
-        className="border rounded-xl px-3 py-2"
-      >
+      <select value={type} onChange={(e) => setType(e.target.value)} className="border rounded-xl px-3 py-2">
         <option value="simple">Simple</option>
         <option value="priority">Priority</option>
         <option value="deadline">Deadline</option>
@@ -76,9 +76,7 @@ export default function Composer() {
 
       {type === "priority" && (
         <input
-          type="number"
-          min={1}
-          max={5}
+          type="number" min={1} max={5}
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
           className="border rounded-xl px-3 py-2"
@@ -95,28 +93,17 @@ export default function Composer() {
         />
       )}
 
-      <select
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-        className="border rounded-xl px-3 py-2"
-      >
+      <select value={status} onChange={(e) => setStatus(e.target.value)} className="border rounded-xl px-3 py-2">
         {STATUSES.map((s) => (
-          <option key={s.value} value={s.value}>
-            {s.label}
-          </option>
+          <option key={s.value} value={s.value}>{s.label}</option>
         ))}
       </select>
 
-      <button
-        type="submit"
-        className="rounded-xl bg-slate-900 text-white px-4 py-2"
-      >
+      <button type="submit" className="rounded-xl bg-slate-900 text-white px-4 py-2">
         Dodaj
       </button>
 
-      {error && (
-        <div className="md:col-span-6 text-sm text-red-600">{error}</div>
-      )}
+      {error && <div className="md:col-span-6 text-sm text-red-600">{error}</div>}
     </form>
   );
 }
