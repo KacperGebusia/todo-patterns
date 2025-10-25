@@ -1,14 +1,204 @@
-# Kanban – Command + Memento (commented)
-Z komentarzami przy wzorcach (// [PATTERN: ...]) i głównych miejscach.
+# Todo Kanban Patterns
 
-## Start
+Autorzy:  
+**Jakub Derkacz**  
+**Kacper Gębusia**
+
+---
+
+## Uruchomienie projektu
+
+### Instalacja zależności
+```bash
 npm install
+```
+
+### Uruchomienie w trybie developerskim
+```bash
 npm run dev
+```
 
+Aplikacja dostępna będzie pod adresem:  
+http://localhost:5173
 
+---
 
-statusy jako formalną maszynę stanów (State),
+## Struktura projektu
 
-strategie sortowania/zapisu (Strategy),
+```
+src/
+ ├── app/
+ │   ├── App.jsx                # Główny komponent (Bridge + Strategy + Command + Mediator)
+ │   └── main.jsx
+ ├── store/
+ │   ├── index.js               # Singleton Store + Observer + Bridge + Memento + Strategy(save)
+ │   └── StoreContext.jsx       # React Context – integracja Store ↔️ UI
+ ├── domain/
+ │   └── factory.js             # Factory Method – tworzenie zadań różnych typów
+ ├── builder/
+ │   └── TaskBuilder.js         # Builder – konstruowanie zadań krok po kroku
+ ├── prototype/
+ │   └── index.js               # Prototype – klonowanie obiektów zadań
+ ├── decorators/
+ │   └── index.js               # Decorator – tagowanie, przypinanie
+ ├── bridge/
+ │   └── storage.js             # Bridge – abstrakcja zapisu danych (localStorage, memory, mockApi)
+ ├── interpreter/
+ │   ├── lexer.js               # Interpreter – tokenizacja zapytań wyszukiwania
+ │   ├── parser.js              # Interpreter – parser składni filtrów
+ │   └── evaluator.js           # Interpreter – ewaluacja warunków wyszukiwania
+ ├── iterator/
+ │   └── TaskIterator.js        # Iterator – paginacja wyników
+ ├── state/
+ │   ├── config.js              # State – definicja dozwolonych stanów i przejść
+ │   └── TaskStateMachine.js    # State – logika maszyny stanów kart
+ ├── command/
+ │   ├── CommandBus.js          # Command + Memento – globalny Undo/Redo przez snapshoty
+ │   ├── commands.js            # Command – implementacje akcji (create, update, delete, move)
+ │   └── index.js               # Singleton instancji CommandBus
+ ├── strategy/
+ │   ├── sort.js                # Strategy(sort) – różne sposoby sortowania kart
+ │   └── save.js                # Strategy(save) – różne strategie zapisu (natychmiastowy, debounce, wsadowy)
+ ├── mediator/
+ │   └── UIBus.js               # Mediator – centralny bus zdarzeń UI (panels, toast, modal)
+ ├── kanban/
+ │   ├── Board.jsx              # Widok tablicy (Interpreter + Iterator + FSM + Mediator)
+ │   ├── Column.jsx             # Kolumna z kartami (State + Mediator)
+ │   ├── Card.jsx               # Pojedyncza karta z opcją zmiany stanu
+ │   ├── Composer.jsx           # Formularz dodawania kart (Builder + Factory + Command + Mediator)
+ │   ├── EditModal.jsx          # Modal edycji kart (Decorator + Mediator)
+ │   ├── SearchBar.jsx          # Pasek wyszukiwania (Interpreter + Mediator)
+ │   └── ResultsList.jsx        # Widok wyników z paginacją (Iterator)
+ ├── memento/
+ │   └── Memento.js             # Snapshoty stanu aplikacji (Command + Memento)
+ └── styles/
+     └── index.css              # Tailwind CSS
+```
 
-mediator UI paneli (Mediator).
+---
+
+## Zastosowane wzorce projektowe
+
+## LAB 1
+
+### Factory Method
+Tworzy instancje różnych typów zadań (`SimpleTask`, `PriorityTask`, `DeadlineTask`) poprzez `TaskFactory.create(type, props)`.
+
+### Singleton
+Zapewnia istnienie tylko jednej instancji globalnego `TodoStore` zarządzającego stanem aplikacji.
+
+### Builder
+Ułatwia konstruowanie obiektów `Task` krok po kroku z walidacją danych i opcjonalnymi polami.
+
+### Prototype
+Klonuje istniejące zadania przy funkcji „Duplikuj”, zachowując metadane.
+
+### Facade
+Uproszczony interfejs do operacji na danych (obecnie nieaktywny – zastąpiony Bridge, pozostaje jako przykład).
+
+### Decorator
+Dodaje do obiektów zadań funkcje „pinned” i „tags” bez ingerencji w klasę bazową.
+
+### Bridge
+Oddziela abstrakcję (interfejs `StorageBridge`) od implementacji backendu (`LocalStorageBackend`, `MemoryBackend`, `MockApiBackend`).
+
+## LAB 2
+
+### Interpreter
+Obsługuje język zapytań w wyszukiwarce, np.:
+```
+status:done tag:work "projekt" before:2025-12-31
+```
+
+### Iterator
+Umożliwia paginację list wyników — przeglądanie po stronach (domyślnie po 12 kart).
+
+### State
+Maszyna stanów opisująca dozwolone przejścia kart (np. `todo → in_progress → done`).
+
+### Command
+Ujednolica akcje użytkownika (`Create`, `Move`, `Update`, `Delete`) w obiekty-komendy wykonywane przez `CommandBus`.
+
+### Memento
+Umożliwia cofanie i przywracanie stanu (`Undo/Redo`) przez snapshoty całego Store.
+
+### Strategy
+Definiuje różne strategie:
+- sortowania kart (priorytet, termin, alfabetycznie),
+- zapisu (natychmiastowy, debounce, wsadowy).
+
+### Mediator
+Koordynuje komunikację między panelami UI:
+- `Composer` – dodawanie kart, reaguje na `FOCUS_COMPOSER`,
+- `SearchBar` – emituje `SET_QUERY`,
+- `EditModal` – otwierany przez `OPEN_EDIT`, zamykany przez `CLOSE_EDIT`,
+- `App` – wyświetla `TOAST` po zdarzeniach (np. dodanie, błąd).
+
+---
+
+## Działanie aplikacji
+
+1. Dodanie zadania – `Builder` tworzy obiekt, `Factory` instancjonuje odpowiedni typ, `CommandBus` wykonuje komendę, `Strategy(save)` decyduje o zapisie.  
+2. Duplikacja – `Prototype` kopiuje kartę.  
+3. Zmienianie statusów – `State` kontroluje dozwolone przejścia.  
+4. Edycja – `Mediator` otwiera modal `EditModal`, `Decorator` obsługuje tagi i przypięcia.  
+5. Wyszukiwanie – `Interpreter` filtruje po składni zapytań, `Iterator` stronicuje wyniki.  
+6. Cofanie / przywracanie – `Command + Memento` odtwarzają historię stanu.  
+7. Sortowanie i zapis – użytkownik wybiera strategię (`Strategy`).  
+8. Komunikacja UI – `Mediator` synchronizuje Composer, SearchBar i EditModal.
+
+---
+
+## Backend (Bridge)
+
+| Backend | Opis | Trwałość |
+|----------|------|----------|
+| `localStorage` | zapis w przeglądarce | trwały |
+| `memory` | dane w RAM, reset po odświeżeniu | ulotny |
+| `mockApi` | symulowane API z opóźnieniem | tymczasowy serwer |
+
+---
+
+## Główne funkcje
+
+- Tablica Kanban z 4 kolumnami (`To Do`, `In Progress`, `Blocked`, `Done`)  
+- Wyszukiwarka z językiem zapytań (Interpreter)  
+- Cofanie / ponawianie zmian (`Undo/Redo`)  
+- Różne strategie sortowania i zapisu  
+- Modal edycji i duplikowania kart  
+- Toasty z powiadomieniami (Mediator)  
+- Paginacja listy wyników (Iterator)  
+- Maszyna stanów (State) kontrolująca przepływ zadań  
+- Trzy backendy danych (Bridge)
+
+---
+
+## Technologie
+
+- React (Vite)  
+- Tailwind CSS  
+- Lucide React (ikony)  
+- JavaScript (ESNext)
+
+---
+
+## Mapa wzorców i plików
+
+| Wzorzec | Plik / Folder | Opis implementacji |
+|----------|----------------|--------------------|
+| Factory Method | `src/domain/factory.js` | Tworzenie obiektów `Task` odpowiedniego typu. |
+| Singleton | `src/store/index.js`, `src/command/index.js` | Jedna instancja Store i CommandBus. |
+| Builder | `src/builder/TaskBuilder.js` | Budowanie obiektu zadania krok po kroku. |
+| Prototype | `src/prototype/index.js` | Klonowanie zadań przy duplikacji. |
+| Facade | `src/persistence/facade.js` | Uproszczony, nieaktywny interfejs danych. |
+| Decorator | `src/decorators/index.js` | Dodawanie tagów i przypięć. |
+| Bridge | `src/bridge/storage.js` | Oddzielenie warstwy danych od abstrakcji. |
+| Interpreter | `src/interpreter/*` | Parsowanie i ewaluacja zapytań wyszukiwania. |
+| Iterator | `src/iterator/TaskIterator.js` | Leniwa paginacja wyników wyszukiwania. |
+| State | `src/state/config.js`, `src/state/TaskStateMachine.js` | Maszyna stanów kart (`todo → in_progress → done`). |
+| Command | `src/command/commands.js`, `src/command/CommandBus.js` | Abstrakcja akcji użytkownika. |
+| Memento | `src/memento/Memento.js`, `src/store/index.js` | Snapshoty stanu dla Undo/Redo. |
+| Strategy (sort) | `src/strategy/sort.js` | Różne sposoby sortowania kart. |
+| Strategy (save) | `src/strategy/save.js` | Tryby zapisu (natychmiastowy, debounce, wsadowy). |
+| Mediator | `src/mediator/UIBus.js` | Bus zdarzeń UI (SearchBar ↔ Board ↔ Composer ↔ EditModal). |
+| Observer | `src/store/StoreContext.jsx`, `src/store/index.js` | Aktualizacja komponentów po zmianie Store. |
