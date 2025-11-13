@@ -1,27 +1,145 @@
-// [PATTERN: Bridge] — DEKLARACJA
-export class Storage { save(_tasks){ throw new Error("Not implemented"); } load(){ throw new Error("Not implemented"); } name(){ return "abstract"; } }
+// src/bridge/storage.js
+// [PATTERN: Bridge] — abstrakcja Storage + różne backendy persystencji
+
+// Zad 4 znaczące nazwy dla klas
+
+// Zad 5 długość metod <= 20 linijek
+// PRzykład klas, zawierających metody o maksymalnej długości 20 linijek
+
+// ===== ABSTRAKCJA =====
+
+export class Storage {
+  save(_tasks) {
+    throw new Error("Storage.save not implemented");
+  }
+
+  load() {
+    throw new Error("Storage.load not implemented");
+  }
+
+  name() {
+    return "abstract";
+  }
+}
+
+// ===== BACKEND: localStorage =====
+
+function safeStringify(value) {
+  return JSON.stringify(value);
+}
+
+function safeParse(json) {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export class LocalStorageBackend extends Storage {
-  constructor(key="factory-method-todos"){ super(); this.key = key; }
-  save(tasks){ localStorage.setItem(this.key, JSON.stringify(tasks)); return { ok:true }; }
-  load(){ try{ const raw = localStorage.getItem(this.key); return { ok:true, data: raw?JSON.parse(raw):[] }; } catch(e){ return { ok:false, error:e }; } }
-  name(){ return "localStorage"; }
+  constructor(key = "factory-method-todos") {
+    super();
+    this.storageKey = key;
+  }
+
+  save(tasks) {
+    const data = safeStringify(tasks);
+    localStorage.setItem(this.storageKey, data);
+    return { ok: true };
+  }
+
+  load() {
+    try {
+      const raw = localStorage.getItem(this.storageKey);
+      const data = safeParse(raw);
+      return { ok: true, data };
+    } catch (error) {
+      return { ok: false, error };
+    }
+  }
+
+  name() {
+    return "localStorage";
+  }
 }
+
+// ===== BACKEND: pamięć RAM =====
+
 export class MemoryBackend extends Storage {
-  constructor(seed=[]){ super(); this.mem = Array.isArray(seed) ? seed : []; }
-  save(tasks){ this.mem = tasks; return { ok:true }; }
-  load(){ return { ok:true, data:this.mem }; }
-  name(){ return "memory"; }
+  constructor(seed = []) {
+    super();
+    this.memory = Array.isArray(seed) ? seed : [];
+  }
+
+  save(tasks) {
+    this.memory = Array.isArray(tasks) ? tasks : [];
+    return { ok: true };
+  }
+
+  load() {
+    return { ok: true, data: this.memory };
+  }
+
+  name() {
+    return "memory";
+  }
 }
+
+// ===== BACKEND: mock API (asynchroniczny) =====
+
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class MockApiBackend extends Storage {
-  constructor({ delay=250 }={}){ super(); this.delay=delay; this._db=[]; }
-  async save(tasks){ await new Promise(r=>setTimeout(r,this.delay)); this._db = JSON.parse(JSON.stringify(tasks)); return { ok:true }; }
-  async load(){ await new Promise(r=>setTimeout(r,this.delay)); return { ok:true, data: JSON.parse(JSON.stringify(this._db)) }; }
-  name(){ return "mockApi"; }
+  constructor({ delay: delayMs = 250 } = {}) {
+    super();
+    this.delayMs = delayMs;
+    this.database = [];
+  }
+
+  async save(tasks) {
+    await delay(this.delayMs);
+    this.database = deepClone(tasks);
+    return { ok: true };
+  }
+
+  async load() {
+    await delay(this.delayMs);
+    return { ok: true, data: deepClone(this.database) };
+  }
+
+  name() {
+    return "mockApi";
+  }
 }
+
+// ===== BRIDGE =====
+
 export class StorageBridge {
-  constructor(backend){ this.backend = backend; }
-  setBackend(b){ this.backend = b; }
-  async save(tasks){ return await this.backend.save(tasks); }
-  async load(){ return await this.backend.load(); }
-  name(){ return this.backend?.name?.() ?? "unknown"; }
+  constructor(backend) {
+    this.backend = backend;
+  }
+
+  setBackend(backend) {
+    this.backend = backend;
+  }
+
+  async save(tasks) {
+    return this.backend.save(tasks);
+  }
+
+  async load() {
+    return this.backend.load();
+  }
+
+  name() {
+    return this.backend?.name?.() ?? "unknown";
+  }
 }

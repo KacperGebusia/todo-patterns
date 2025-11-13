@@ -1,63 +1,160 @@
+// src/interpreter/evaluator.js
 // Tworzy funkcję predykatu: (task) => boolean
 // Obsługuje: tag, status, type, pinned, before, after + frazy tekstowe
 
-function parseDateLoose(s) {
-  // YYYY-MM-DD / YYYY-MM-DDTHH:mm (lokalnie -> Date UTC)
-  if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + "T00:00:00");
-  // zostaw Date interpretacji przeglądarki dla reszty
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function getComparableDate(task) {
-  if (task?.meta?.due) return new Date(task.meta.due);
-  return new Date(task.createdAt || 0);
-}
-
-function includesCI(hay, needle) {
-  return String(hay || "").toLowerCase().includes(String(needle || "").toLowerCase());
-}
+// =====================
+// API (poziom najwyższy)
+// =====================
 
 export function evaluate(ast) {
   if (!ast || ast.length === 0) {
     return () => true;
   }
 
-  const checks = [];
+  const predicates = buildPredicatesFromAst(ast);
 
-  for (const node of ast) {
-    if (node.kind === "kv") {
-      const k = node.key;
-      const v = node.value;
+  return (task) =>
+    predicates.every((predicate) => predicate(task));
+}
 
-      if (k === "tag") {
-        checks.push(task => (task?.meta?.tags || []).some(t => includesCI(t, v)));
-      } else if (k === "status") {
-        const val = String(v).toLowerCase();
-        checks.push(task => String(task?.status || (task?.completed ? "done" : "todo")).toLowerCase() === val);
-      } else if (k === "type") {
-        const val = String(v).toLowerCase();
-        checks.push(task => String(task?.type).toLowerCase() === val);
-      } else if (k === "pinned") {
-        const want = /^(true|1|yes|tak)$/i.test(String(v));
-        checks.push(task => Boolean(task?.meta?.pinned) === want);
-      } else if (k === "before" || k === "after") {
-        const d = parseDateLoose(v);
-        if (d) {
-          if (k === "before") checks.push(task => getComparableDate(task) < d);
-          if (k === "after")  checks.push(task => getComparableDate(task) > d);
-        }
-      } else {
-        // nieznany klucz: traktuj jako tekst
-        checks.push(task => includesCI(task?.title, `${k}:${v}`));
-      }
-    } else if (node.kind === "text") {
-      const phrase = node.value;
-      checks.push(task => includesCI(task?.title, phrase));
-    }
+// =====================
+// Poziom średni: AST → lista predykatów
+// =====================
+
+function buildPredicatesFromAst(ast) {
+  return ast
+    .map(createPredicateFromNode)
+    .filter((predicate) => typeof predicate === "function");
+}
+
+function createPredicateFromNode(node) {
+  if (node.kind === "kv") {
+    return createPredicateFromKeyValueNode(node);
+  }
+  if (node.kind === "text") {
+    return createTextPredicate(node.value);
+  }
+  return null;
+}
+
+function createPredicateFromKeyValueNode(node) {
+  const { key, value } = node;
+
+  if (key === "tag") {
+    return createTagPredicate(value);
+  }
+  if (key === "status") {
+    return createStatusPredicate(value);
+  }
+  if (key === "type") {
+    return createTypePredicate(value);
+  }
+  if (key === "pinned") {
+    return createPinnedPredicate(value);
+  }
+  if (key === "before" || key === "after") {
+    return createBoundaryDatePredicate(key, value);
   }
 
-  // AND wszystkich warunków
-  return (task) => checks.every(fn => fn(task));
+  return createUnknownKeyPredicate(key, value);
+}
+
+// =====================
+// Poziom niski: konkretne predykaty
+// =====================
+
+function createTagPredicate(tagValue) {
+  return (task) => {
+    const tags = task?.meta?.tags || [];
+    return tags.some((tag) =>
+      includesCaseInsensitive(tag, tagValue)
+    );
+  };
+}
+
+function createStatusPredicate(statusValue) {
+  const normalizedStatus = String(statusValue).toLowerCase();
+
+  return (task) => {
+    const rawStatus =
+      task?.status || (task?.completed ? "done" : "todo");
+    return (
+      String(rawStatus).toLowerCase() === normalizedStatus
+    );
+  };
+}
+
+function createTypePredicate(typeValue) {
+  const normalizedType = String(typeValue).toLowerCase();
+
+  return (task) =>
+    String(task?.type || "").toLowerCase() === normalizedType;
+}
+
+function createPinnedPredicate(rawValue) {
+  const shouldBePinned = /^(true|1|yes|tak)$/i.test(
+    String(rawValue)
+  );
+
+  return (task) =>
+    Boolean(task?.meta?.pinned) === shouldBePinned;
+}
+
+function createBoundaryDatePredicate(kind, rawValue) {
+  const boundaryDate = parseLooseDateString(rawValue);
+  if (!boundaryDate) return null;
+
+  if (kind === "before") {
+    return (task) =>
+      getTaskComparableDate(task) < boundaryDate;
+  }
+
+  if (kind === "after") {
+    return (task) =>
+      getTaskComparableDate(task) > boundaryDate;
+  }
+
+  return null;
+}
+
+function createUnknownKeyPredicate(key, value) {
+  const phrase = `${key}:${value}`;
+  return (task) =>
+    includesCaseInsensitive(task?.title, phrase);
+}
+
+function createTextPredicate(phrase) {
+  return (task) =>
+    includesCaseInsensitive(task?.title, phrase);
+}
+
+// =====================
+// Poziom najniższy: pomocnicze utility
+// =====================
+
+function parseLooseDateString(rawText) {
+  if (!rawText) return null;
+
+  const isYmdOnly = /^\d{4}-\d{2}-\d{2}$/.test(rawText);
+  if (isYmdOnly) {
+    return new Date(`${rawText}T00:00:00`);
+  }
+
+  const parsedDate = new Date(rawText);
+  return Number.isNaN(parsedDate.getTime())
+    ? null
+    : parsedDate;
+}
+
+function getTaskComparableDate(task) {
+  if (task?.meta?.due) {
+    return new Date(task.meta.due);
+  }
+  return new Date(task?.createdAt || 0);
+}
+
+function includesCaseInsensitive(haystack, needle) {
+  const normalizedHaystack = String(haystack || "").toLowerCase();
+  const normalizedNeedle = String(needle || "").toLowerCase();
+  return normalizedHaystack.includes(normalizedNeedle);
 }

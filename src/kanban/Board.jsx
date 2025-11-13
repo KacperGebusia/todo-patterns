@@ -1,5 +1,6 @@
 // src/kanban/Board.jsx
-// Wzorce: Interpreter • Iterator • State(FSM) • Command+Memento • Prototype • Factory • Strategy(sort) • Mediator
+// Wzorce: Interpreter • Iterator • State(FSM) • Command+Memento
+// Prototype • Factory • Strategy(sort) • Mediator
 
 import { useEffect, useMemo, useState } from "react";
 import Column from "./Column";
@@ -31,70 +32,71 @@ import { uiBus } from "../mediator/UIBus";
 
 const PAGE_SIZE = 12;
 
+// =====================
+// GŁÓWNY KOMPONENT (wysoki poziom)
+// =====================
+
 export default function Board({ sortKey = "kanbanOrder" }) {
   const { tasks } = useStore();
-  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  const safeTasks = useSafeTasks(tasks);
+
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  // Mediator: słuchaj zmian zapytania z SearchBar (SET_QUERY)
-  useEffect(() => {
-    const off = uiBus.on("SET_QUERY", ({ query }) => {
-      setQuery(query ?? "");
-      setPage(1);
-    });
-    return off;
-  }, []);
+  useSyncQueryWithMediator(setQuery, setPage);
 
-  const comparator = useMemo(() => getComparator(sortKey), [sortKey]);
+  const comparator = useMemo(
+    () => getComparator(sortKey),
+    [sortKey]
+  );
 
-  // === Interpreter ===
-  const predicate = useMemo(() => {
-    try { return evaluate(parse(lex(query))); } catch { return () => true; }
-  }, [query]);
+  const predicate = useSearchPredicate(query);
+  const searchResults = useSearchResults(
+    safeTasks,
+    query,
+    predicate,
+    comparator
+  );
+  const pageData = usePagedResults(searchResults, page);
 
-  const results = useMemo(() => {
-    if (!query.trim()) return [];
-    return [...safeTasks].filter(predicate).sort(comparator);
-  }, [safeTasks, query, predicate, comparator]);
+  const getColumnTasks = (status) =>
+    filterTasksByStatus(
+      safeTasks,
+      status,
+      comparator
+    );
 
-  // === Iterator ===
-  const iterator = useMemo(() => new TaskIterator(results, { pageSize: PAGE_SIZE }), [results]);
-  const pageData = useMemo(() => iterator.getPage(page), [iterator, page]);
+  const handleDropCard = async (id, status, toIndex) => {
+    await moveCardAndUpdateCompletion(
+      id,
+      status,
+      toIndex
+    );
+  };
 
-  // === Kanban (widok) ===
-  const byStatus = (s) =>
-    safeTasks
-      .filter((t) => (t.status ?? (t.completed ? "done" : "todo")) === s)
-      .sort(comparator);
+  const handleDuplicate = async (task) => {
+    await duplicateTask(task);
+  };
 
-  // === Command + Memento + FSM ===
-  async function onDropCard(id, status, toIndex) {
-    await commandBus.execute(new MoveCardCommand(id, status, toIndex));
-    await commandBus.execute(new UpdateTaskCommand(id, () => ({ completed: status === "done" })));
-  }
+  const handleDelete = async (task) => {
+    await deleteTask(task);
+  };
 
-  async function onDuplicate(task) {
-    const copy = TaskFactory.fromJSON(cloneTask(task));
-    await commandBus.execute(new CreateInCommand(task.status ?? "todo", copy));
-    uiBus.emit("TOAST", { type: "success", message: "Zduplikowano kartę" });
-  }
+  const handleEdit = (task) => {
+    openEditModal(task);
+  };
 
-  async function onDelete(task) {
-    await commandBus.execute(new RemoveTaskCommand(task.id));
-    uiBus.emit("TOAST", { type: "info", message: "Usunięto kartę" });
-  }
+  const handleChangeState = async (task, toState) => {
+    await changeTaskState(task, toState);
+  };
 
-  function onEdit(task) {
-    uiBus.emit("OPEN_EDIT", { task }); // zamiast lokalnego state
-  }
+  const handlePrevPage = () =>
+    setPage((prev) => Math.max(1, prev - 1));
 
-  async function onChangeState(task, toState) {
-    if (!canTo(task.status, toState)) return;
-    const patched = transitionTo(task, toState);
-    await commandBus.execute(new MoveCardCommand(task.id, patched.status, Number.MAX_SAFE_INTEGER));
-    await commandBus.execute(new UpdateTaskCommand(task.id, { completed: patched.completed }));
-  }
+  const handleNextPage = () =>
+    setPage((prev) =>
+      Math.min(pageData.pageCount, prev + 1)
+    );
 
   return (
     <div className="space-y-6">
@@ -107,18 +109,54 @@ export default function Board({ sortKey = "kanbanOrder" }) {
           page={pageData.page}
           pageCount={pageData.pageCount}
           total={pageData.total}
-          onPrev={() => setPage((p) => Math.max(1, p - 1))}
-          onNext={() => setPage((p) => Math.min(pageData.pageCount, p + 1))}
-          onEdit={onEdit}
-          onDuplicate={onDuplicate}
-          onDelete={onDelete}
+          onPrev={handlePrevPage}
+          onNext={handleNextPage}
+          onEdit={handleEdit}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Column title="To Do"        status="todo"        tasks={byStatus("todo")}        onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
-          <Column title="In Progress"  status="in_progress" tasks={byStatus("in_progress")} onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
-          <Column title="Blocked"      status="blocked"     tasks={byStatus("blocked")}     onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
-          <Column title="Done"         status="done"        tasks={byStatus("done")}        onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
+          <Column
+            title="To Do"
+            status="todo"
+            tasks={getColumnTasks("todo")}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
+          <Column
+            title="In Progress"
+            status="in_progress"
+            tasks={getColumnTasks("in_progress")}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
+          <Column
+            title="Blocked"
+            status="blocked"
+            tasks={getColumnTasks("blocked")}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
+          <Column
+            title="Done"
+            status="done"
+            tasks={getColumnTasks("done")}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
         </div>
       )}
 
@@ -126,4 +164,150 @@ export default function Board({ sortKey = "kanbanOrder" }) {
       <EditModal />
     </div>
   );
+}
+
+// =====================
+// HOOKI / POZIOM ŚREDNI
+// =====================
+
+function useSafeTasks(tasks) {
+  return Array.isArray(tasks) ? tasks : [];
+}
+
+function useSyncQueryWithMediator(setQuery, setPage) {
+  useEffect(() => {
+    const unsubscribe = uiBus.on(
+      "SET_QUERY",
+      ({ query }) => {
+        setQuery(query ?? "");
+        setPage(1);
+      }
+    );
+    return unsubscribe;
+  }, [setQuery, setPage]);
+}
+
+function useSearchPredicate(query) {
+  return useMemo(() => {
+    try {
+      return evaluate(parse(lex(query)));
+    } catch {
+      return () => true;
+    }
+  }, [query]);
+}
+
+function useSearchResults(
+  tasks,
+  query,
+  predicate,
+  comparator
+) {
+  return useMemo(() => {
+    if (!query.trim()) return [];
+    const sorted = [...tasks].filter(predicate);
+    sorted.sort(comparator);
+    return sorted;
+  }, [tasks, query, predicate, comparator]);
+}
+
+function usePagedResults(results, page) {
+  return useMemo(() => {
+    const iterator = new TaskIterator(results, {
+      pageSize: PAGE_SIZE,
+    });
+    return iterator.getPage(page);
+  }, [results, page]);
+}
+
+// =====================
+// OPERACJE NA TSK / COMMAND + STATE (średni poziom)
+// =====================
+
+async function moveCardAndUpdateCompletion(
+  taskId,
+  status,
+  toIndex
+) {
+  await commandBus.execute(
+    new MoveCardCommand(taskId, status, toIndex)
+  );
+  await commandBus.execute(
+    new UpdateTaskCommand(taskId, () => ({
+      completed: status === "done",
+    }))
+  );
+}
+
+async function duplicateTask(task) {
+  const cloned = cloneTask(task);
+  const instance = TaskFactory.fromJSON(cloned);
+  const targetStatus = task.status ?? "todo";
+
+  await commandBus.execute(
+    new CreateInCommand(targetStatus, instance)
+  );
+
+  uiBus.emit("TOAST", {
+    type: "success",
+    message: "Zduplikowano kartę",
+  });
+}
+
+async function deleteTask(task) {
+  await commandBus.execute(
+    new RemoveTaskCommand(task.id)
+  );
+  uiBus.emit("TOAST", {
+    type: "info",
+    message: "Usunięto kartę",
+  });
+}
+
+function openEditModal(task) {
+  uiBus.emit("OPEN_EDIT", { task });
+}
+
+async function changeTaskState(task, toState) {
+  if (!canTo(task.status, toState)) return;
+
+  const patchedTask = transitionTo(task, toState);
+
+  await commandBus.execute(
+    new MoveCardCommand(
+      task.id,
+      patchedTask.status,
+      Number.MAX_SAFE_INTEGER
+    )
+  );
+
+  await commandBus.execute(
+    new UpdateTaskCommand(task.id, {
+      completed: patchedTask.completed,
+    })
+  );
+}
+
+// =====================
+// UTILS (najniższy poziom)
+// =====================
+
+function filterTasksByStatus(
+  tasks,
+  status,
+  comparator
+) {
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+
+  return safeTasks
+    .map((task) => normalizeTaskStatus(task))
+    .filter((task) => task.status === status)
+    .sort(comparator);
+}
+
+function normalizeTaskStatus(task) {
+  const status =
+    task.status ||
+    (task.completed ? "done" : "todo");
+  return { ...task, status };
 }

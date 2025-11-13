@@ -1,15 +1,98 @@
+// src/builder/TaskBuilder.js
 // [PATTERN: Builder] — DEKLARACJA
+
+// Zad 1: Zasada podstawienia Liskov
+// Współpraca z modelami z src/models/Task.js (LSP + Factory-like)
+
+// Zad 9 zwracanie wyjątków
+// build() - Brak tytułu zadania
+
+import {
+  SimpleTask,
+  PriorityTask,
+  DeadlineTask,
+} from "../models/Task";
+
 export class TaskBuilder {
-  constructor(){ this.reset(); }
-  reset(){ this._title=""; this._type="simple"; this._meta={}; this._completed=false; this._status="todo"; return this; }
-  title(v){ this._title = String(v ?? "").trim(); return this; }
-  type(v){ this._type = v || "simple"; return this; }
-  priority(p){ this._meta.priority = Number(p ?? 1); return this; }
-  due(dtLocal){ this._meta.due = new Date(dtLocal).toISOString(); return this; }
-  status(s){ this._status = s || "todo"; return this; }
-  completed(flag){ this._completed = Boolean(flag); return this; }
-  build(){
-    if (!this._title) throw new Error("Brak tytułu zadania.");
-    return { title: this._title, completed: this._completed, type: this._type, status: this._status, meta: { ...this._meta } };
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this._title = "";
+    this._type = "simple";
+    this._meta = {};
+    this._completed = false;
+    this._status = "todo";
+    return this;
+  }
+
+  title(value) {
+    this._title = String(value ?? "").trim();
+    return this;
+  }
+
+  type(value) {
+    this._type = value || "simple";
+    return this;
+  }
+
+  priority(priorityValue) {
+    this._meta.priority = Number(priorityValue ?? 1);
+    return this;
+  }
+
+  due(localDateTimeString) {
+    if (localDateTimeString) {
+      this._meta.due = new Date(localDateTimeString).toISOString();
+    }
+    return this;
+  }
+
+  status(statusValue) {
+    this._status = statusValue || "todo";
+    return this;
+  }
+
+  completed(flag) {
+    this._completed = Boolean(flag);
+    return this;
+  }
+
+  // === KLUCZOWA ZMIANA: budujemy *instancję* jednej z klas z Task.js ===
+  build() {
+    if (!this._title) {
+      throw new Error("Brak tytułu zadania.");
+    }
+
+    const baseProps = {
+      title: this._title,
+      completed: this._completed,
+      // 'type' ustawią już konkretne klasy (SimpleTask / PriorityTask / DeadlineTask),
+      // ale przekazujemy, żeby zachować spójność z resztą projektu
+      type: this._type,
+      meta: {
+        ...this._meta,
+        status: this._status, // status przenosimy do meta, żeby nie zaginął
+      },
+    };
+
+    let taskInstance;
+    switch (this._type) {
+      case "priority":
+        taskInstance = new PriorityTask(baseProps);
+        break;
+      case "deadline":
+        taskInstance = new DeadlineTask(baseProps);
+        break;
+      default:
+        taskInstance = new SimpleTask(baseProps);
+        break;
+    }
+
+    // opcjonalnie czyścimy builder po użyciu
+    this.reset();
+
+    return taskInstance;
   }
 }

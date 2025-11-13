@@ -1,30 +1,63 @@
 // src/mediator/UIBus.js
 // [PATTERN: Mediator] — centralny bus UI, koordynuje akcje między panelami
-// Zdarzenia (propozycja):
-// - OPEN_EDIT   : { task }
-// - CLOSE_EDIT  : {}
-// - SET_QUERY   : { query }
-// - FOCUS_COMPOSER : {}
-// - TOAST       : { type: 'success'|'error'|'info', message: string }
+// Zdarzenia (przykład):
+// - OPEN_EDIT
+// - CLOSE_EDIT
+// - SET_QUERY
+// - FOCUS_COMPOSER
+// - TOAST
 
 class UIBus {
-  constructor(){
-    this.listeners = new Map(); // event -> Set<fn>
+  constructor() {
+    this.listeners = new Map(); // event -> Set<handler>
   }
-  on(event, fn){
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event).add(fn);
-    return () => this.off(event, fn);
+
+  on(eventName, handler) {
+    const eventListeners =
+      this.ensureListenerSet(eventName);
+    eventListeners.add(handler);
+    return () =>
+      this.off(eventName, handler);
   }
-  off(event, fn){
-    const set = this.listeners.get(event);
-    if (set) set.delete(fn);
+
+  off(eventName, handler) {
+    const eventListeners =
+      this.listeners.get(eventName);
+    if (!eventListeners) return;
+    eventListeners.delete(handler);
   }
-  emit(event, payload){
-    const set = this.listeners.get(event);
-    if (!set) return;
-    for (const fn of set) {
-      try { fn(payload); } catch (e) { console.error("[UIBus] handler error", e); }
+
+  emit(eventName, payload) {
+    const eventListeners =
+      this.listeners.get(eventName);
+    if (!eventListeners) return;
+
+    for (const handler of eventListeners) {
+      this.safeInvokeHandler(handler, payload);
+    }
+  }
+
+  // =====================
+  // UTILS
+  // =====================
+
+  ensureListenerSet(eventName) {
+    if (!this.listeners.has(eventName)) {
+      this.listeners.set(eventName, new Set());
+    }
+    return this.listeners.get(eventName);
+  }
+
+  safeInvokeHandler(handler, payload) {
+    try {
+      handler(payload);
+    } catch (error) {
+      // W UI nie chcemy wywalać całej aplikacji
+      // z powodu błędu w jednym handlerze.
+      console.error(
+        "[UIBus] handler error",
+        error
+      );
     }
   }
 }

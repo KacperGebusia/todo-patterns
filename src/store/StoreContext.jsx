@@ -1,46 +1,77 @@
 // src/store/StoreContext.jsx
 // Wzorce: Observer (subskrypcja store) + React Context
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { todoStore } from "./index";
 
-const StoreCtx = createContext({
+const StoreContext = createContext({
   tasks: [],
   todoStore,
   lastError: null,
   backend: "unknown",
-  ready: false
+  ready: false,
 });
 
-export function StoreProvider({ children }){
-  const [tasks, setTasks] = useState(Array.isArray(todoStore.state) ? todoStore.state : []);
+export function StoreProvider({ children }) {
+  const [tasks, setTasks] = useState(
+    Array.isArray(todoStore.state) ? todoStore.state : []
+  );
   const [lastError, setLastError] = useState(null);
   const [backend, setBackend] = useState(todoStore.backendName());
   const [ready, setReady] = useState(todoStore.ready);
 
   useEffect(() => {
-    const offState = todoStore.emitter.on((s) => {
-      // bezpieczeństwo: zawsze tablica
-      setTasks(Array.isArray(s) ? s : []);
+    const unsubscribeState = todoStore.emitter.on((storeState) => {
+      const nextTasks = Array.isArray(storeState)
+        ? storeState
+        : [];
+      setTasks(nextTasks);
       setReady(true);
     });
-    const offError = todoStore.errorEmitter.on((e) => setLastError(e));
-    const offBackend = todoStore.backendEmitter.on((b) => setBackend(b));
+
+    const unsubscribeError = todoStore.errorEmitter.on(
+      (error) => setLastError(error)
+    );
+
+    const unsubscribeBackend = todoStore.backendEmitter.on(
+      (backendName) => setBackend(backendName)
+    );
 
     if (!todoStore.ready) {
-      const tick = setInterval(() => {
-        if (todoStore.ready){ setReady(true); clearInterval(tick); }
+      const readyCheckTimerId = setInterval(() => {
+        if (todoStore.ready) {
+          setReady(true);
+          clearInterval(readyCheckTimerId);
+        }
       }, 50);
-      return () => { offState(); offError(); offBackend(); clearInterval(tick); };
+
+      return () => {
+        unsubscribeState();
+        unsubscribeError();
+        unsubscribeBackend();
+        clearInterval(readyCheckTimerId);
+      };
     }
-    return () => { offState(); offError(); offBackend(); };
+
+    return () => {
+      unsubscribeState();
+      unsubscribeError();
+      unsubscribeBackend();
+    };
   }, []);
 
   return (
-    <StoreCtx.Provider value={{ tasks, todoStore, lastError, backend, ready }}>
+    <StoreContext.Provider
+      value={{ tasks, todoStore, lastError, backend, ready }}
+    >
       {children}
-    </StoreCtx.Provider>
+    </StoreContext.Provider>
   );
 }
 
-export const useStore = () => useContext(StoreCtx);
+export const useStore = () => useContext(StoreContext);

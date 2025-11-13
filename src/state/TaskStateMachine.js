@@ -1,57 +1,90 @@
 // src/state/TaskStateMachine.js
-// [PATTERN: State] — DEKLARACJA i API FSM: can(), canTo(), transition(), transitionTo(), eventsFor()
+// [PATTERN: State] — deklaracja i API FSM: can(), canTo(), transition(), transitionTo(), eventsFor()
 
 import { TRANSITIONS, STATES } from "./config";
 
-/** Zwraca mapę event->nextState dla danego currentState */
-function tableFor(state) {
-  return TRANSITIONS[state] || {};
+// Zwraca mapę event -> nextState dla podanego stanu
+function getTransitionTableForState(currentState) {
+  return TRANSITIONS[currentState] || {};
 }
 
-/** Czy zdarzenie jest dozwolone z bieżącego stanu? */
-export function can(state, event) {
-  return Boolean(tableFor(state)[event]);
+// Czy zdarzenie jest dozwolone z bieżącego stanu?
+export function can(currentState, eventName) {
+  const transitionTable = getTransitionTableForState(currentState);
+  return Boolean(transitionTable[eventName]);
 }
 
-/** Czy można przejść DO wskazanego stanu (na podstawie możliwych eventów)? */
-export function canTo(state, toState) {
-  const t = tableFor(state);
-  return Object.values(t).includes(toState);
+// Czy można przejść DO wskazanego stanu (na podstawie możliwych eventów)?
+export function canTo(currentState, targetState) {
+  const transitionTable = getTransitionTableForState(currentState);
+  return Object.values(transitionTable).includes(targetState);
 }
 
-/** Lista dozwolonych eventów z danego stanu */
-export function eventsFor(state) {
-  return Object.keys(tableFor(state));
+// Lista dozwolonych eventów z danego stanu
+export function eventsFor(currentState) {
+  const transitionTable = getTransitionTableForState(currentState);
+  return Object.keys(transitionTable);
 }
 
-/** Zastosuj event -> nowy obiekt zadania (bez mutacji) */
-export function transition(task, event) {
-  const curr = task?.status ?? "todo";
-  const next = tableFor(curr)[event];
-  if (!next) {
-    throw new Error(`Transition denied: state=${curr} event=${event}`);
+function getCurrentTaskStatus(task) {
+  return task?.status ?? "todo";
+}
+
+function getNextStatusForEvent(currentStatus, eventName) {
+  const transitionTable = getTransitionTableForState(currentStatus);
+  return transitionTable[eventName];
+}
+
+// Zastosuj event -> zwróć nowy obiekt zadania (bez mutacji)
+export function transition(task, eventName) {
+  const currentStatus = getCurrentTaskStatus(task);
+  const nextStatus = getNextStatusForEvent(currentStatus, eventName);
+
+  if (!nextStatus) {
+    throw new Error(
+      `Transition denied: state=${currentStatus} event=${eventName}`
+    );
   }
-  return normalizeTaskState({ ...task, status: next });
+
+  const updatedTask = { ...task, status: nextStatus };
+  return normalizeTaskState(updatedTask);
 }
 
-/** Wymuś przejście DO konkretnego stanu (znajdzie pierwszy pasujący event) */
-export function transitionTo(task, toState) {
-  const curr = task?.status ?? "todo";
-  if (curr === toState) return { ...task };
-  const t = tableFor(curr);
-  const evt = Object.keys(t).find((k) => t[k] === toState);
-  if (!evt) throw new Error(`No event from ${curr} to ${toState}`);
-  return transition(task, evt);
+// Wymuś przejście DO konkretnego stanu (znajduje pierwszy pasujący event)
+export function transitionTo(task, targetState) {
+  const currentStatus = getCurrentTaskStatus(task);
+
+  if (currentStatus === targetState) {
+    return { ...task };
+  }
+
+  const transitionTable = getTransitionTableForState(currentStatus);
+  const eventName = Object.keys(transitionTable).find(
+    (eventKey) => transitionTable[eventKey] === targetState
+  );
+
+  if (!eventName) {
+    throw new Error(
+      `No event from ${currentStatus} to ${targetState}`
+    );
+  }
+
+  return transition(task, eventName);
 }
 
-/** Normalizacja dodatkowych pól (np. completed dla 'done') */
+// Normalizacja pól stanu (np. completed dla 'done')
 function normalizeTaskState(task) {
-  const st = task?.status ?? "todo";
-  const completed = st === "done";
-  return { ...task, status: st, completed };
+  const normalizedStatus = task?.status ?? "todo";
+  const isCompleted = normalizedStatus === "done";
+
+  return {
+    ...task,
+    status: normalizedStatus,
+    completed: isCompleted,
+  };
 }
 
-/** Walidacja stanu (opcjonalna) */
-export function isValidState(s) {
-  return STATES.includes(s);
+// Walidacja stanu (opcjonalna)
+export function isValidState(stateKey) {
+  return STATES.includes(stateKey);
 }

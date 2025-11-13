@@ -1,4 +1,26 @@
-// [PATTERN: Command] — przeniesienie
+// src/command/commands/MoveCardCommand.js
+// [PATTERN: Command] — Przeniesienie karty między kolumnami
+
 import { ICommand } from "../Command";
-export class MoveCardCommand extends ICommand { constructor(id, toStatus, toIndex){ super(); this.id=id; this.toStatus=toStatus; this.toIndex=toIndex; }
-  meta(){ return { name:"MoveCard", id:this.id, to:this.toStatus, idx:this.toIndex }; } async do(store){ await store.moveCard(this.id, this.toStatus, this.toIndex); } }
+
+export class MoveCardCommand extends ICommand {
+  constructor(taskId, targetStatus, targetIndex) {
+    super();
+    this.taskId = taskId;
+    this.targetStatus = targetStatus;
+    this.targetIndex = targetIndex;
+  }
+
+  meta() {
+    return {
+      name: "MoveCard",
+      id: this.taskId,
+      toStatus: this.targetStatus,
+      toIndex: this.targetIndex,
+    };
+  }
+
+  async do(store) {
+    await store.moveCard(this.taskId, this.targetStatus, this.targetIndex);
+  }
+}

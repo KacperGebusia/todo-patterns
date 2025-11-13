@@ -1,5 +1,6 @@
 // src/app/App.jsx
-// Wzorce: Bridge • Strategy(sort/save) • Command+Memento • Observer • Mediator(TOAST)
+// Wzorce: Factory • Singleton • Builder • Prototype • Facade • Decorator • Bridge
+// Command • Memento • Interpreter • Iterator • State • Strategy • Mediator • DIP • ISP
 
 import { useEffect, useState } from "react";
 import { Database, RotateCcw, RotateCw, SortAsc } from "lucide-react";
@@ -10,27 +11,48 @@ import { SORT_STRATEGIES } from "../strategy/sort";
 import { SAVE_STRATEGY_OPTIONS } from "../strategy/save";
 import { uiBus } from "../mediator/UIBus";
 
-function ToastHost(){
+// DIP: wstrzykiwanie repozytorium, notyfikatora i eksportera
+import { dipContainer } from "../dip/wiring";
+// ISP: wąskie interfejsy i segregacja
+import { closeAllInStatus, exportDoneAs } from "../isp/wiring";
+
+// ===== magic number → stała =====
+const TOAST_LIFETIME_MS = 2600;
+
+function ToastHost() {
   const [toasts, setToasts] = useState([]);
+
   useEffect(() => {
-    const off = uiBus.on("TOAST", ({ type="info", message }) => {
+    const off = uiBus.on("TOAST", ({ type = "info", message }) => {
       const id = crypto.randomUUID();
-      setToasts(t => [...t, { id, type, message }]);
+      setToasts((current) => [...current, { id, type, message }]);
+
       setTimeout(() => {
-        setToasts(t => t.filter(x => x.id !== id));
-      }, 2600);
+        setToasts((current) => current.filter((toast) => toast.id !== id));
+      }, TOAST_LIFETIME_MS);
     });
+
     return off;
   }, []);
+
   return (
     <div className="fixed bottom-4 right-4 z-50 space-y-2">
-      {toasts.map(t => (
-        <div key={t.id} className="px-3 py-2 rounded-xl shadow border bg-white text-sm">
-          <span className={
-            t.type === "error" ? "text-red-600" :
-            t.type === "success" ? "text-green-600" :
-            "text-slate-700"
-          }>{t.message}</span>
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className="px-3 py-2 rounded-xl shadow border bg-white text-sm"
+        >
+          <span
+            className={
+              toast.type === "error"
+                ? "text-red-600"
+                : toast.type === "success"
+                ? "text-green-600"
+                : "text-slate-700"
+            }
+          >
+            {toast.message}
+          </span>
         </div>
       ))}
     </div>
@@ -41,73 +63,169 @@ export default function App() {
   const { backend, lastError, ready, todoStore } = useStore();
   const [view] = useState("board");
   const [can, setCan] = useState({ canUndo: false, canRedo: false });
-
   const [sortKey, setSortKey] = useState("kanbanOrder");
   const [saveKey, setSaveKey] = useState("immediate");
 
   useEffect(() => {
     const off = commandBus.onChange(setCan);
-    const onKey = (e) => {
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key.toLowerCase() === "z") { e.preventDefault(); commandBus.undo(); }
-      if (ctrl && e.key.toLowerCase() === "y") { e.preventDefault(); commandBus.redo(); }
+
+    const onKey = (event) => {
+      const ctrl = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+
+      if (ctrl && key === "z") {
+        event.preventDefault();
+        commandBus.undo();
+      }
+      if (ctrl && key === "y") {
+        event.preventDefault();
+        commandBus.redo();
+      }
     };
+
     window.addEventListener("keydown", onKey);
-    return () => { off(); window.removeEventListener("keydown", onKey); };
+    return () => {
+      off();
+      window.removeEventListener("keydown", onKey);
+    };
   }, []);
 
-  async function handleSaveStrategyChange(val){
-    setSaveKey(val);
-    await todoStore.setSaveStrategy(val);
-    uiBus.emit("TOAST", { type: "info", message: `Zapis: ${SAVE_STRATEGY_OPTIONS.find(x=>x.key===val)?.label || val}` });
+  async function handleSaveStrategyChange(value) {
+    setSaveKey(value);
+    await todoStore.setSaveStrategy(value);
+
+    const label =
+      SAVE_STRATEGY_OPTIONS.find((option) => option.key === value)?.label ||
+      value;
+
+    uiBus.emit("TOAST", {
+      type: "info",
+      message: `Zapis: ${label}`,
+    });
+  }
+
+  // DIP actions
+  async function closeInProgress() {
+    await dipContainer.usecases.completeAllInStatus("in_progress");
+  }
+
+  async function exportDoneCsv() {
+    const file = await dipContainer.usecases.exportDone();
+    const blob = new Blob([file.data], { type: file.mime });
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = file.filename;
+    anchor.click();
+    URL.revokeObjectURL(anchor.href);
+  }
+
+  // ISP actions
+  async function closeBlockedIsp() {
+    await closeAllInStatus("blocked");
+  }
+
+  async function exportDoneJsonIsp() {
+    const file = await exportDoneAs("json");
+    const blob = new Blob([file.data], { type: file.mime });
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = file.filename;
+    anchor.click();
+    URL.revokeObjectURL(anchor.href);
   }
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b bg-white">
+        {/* Backend (Bridge) */}
         <div className="inline-flex items-center gap-2 text-sm text-slate-600">
           <Database size={16} />
           <span>Backend:</span>
           <select
             className="border rounded-lg px-2 py-1 text-sm"
             value={backend}
-            onChange={(e) => todoStore.setBackend(e.target.value)}
+            onChange={(event) => todoStore.setBackend(event.target.value)}
           >
             <option value="localStorage">localStorage</option>
             <option value="memory">memory</option>
             <option value="mockApi">mockApi</option>
           </select>
-          {!ready && <span className="text-slate-400">(ładowanie...)</span>}
+          {!ready && (
+            <span className="text-slate-400">(ładowanie...)</span>
+          )}
         </div>
 
+        {/* Sort (Strategy) */}
         <div className="inline-flex items-center gap-2 text-sm text-slate-600">
           <SortAsc size={16} />
           <span>Sortuj:</span>
           <select
             className="border rounded-lg px-2 py-1 text-sm"
             value={sortKey}
-            onChange={(e) => setSortKey(e.target.value)}
+            onChange={(event) => setSortKey(event.target.value)}
           >
-            {SORT_STRATEGIES.map(s => (
-              <option key={s.key} value={s.key}>{s.label}</option>
+            {SORT_STRATEGIES.map((strategy) => (
+              <option key={strategy.key} value={strategy.key}>
+                {strategy.label}
+              </option>
             ))}
           </select>
         </div>
 
+        {/* Save Strategy */}
         <div className="inline-flex items-center gap-2 text-sm text-slate-600">
           <span>Zapis:</span>
           <select
             className="border rounded-lg px-2 py-1 text-sm"
             value={saveKey}
-            onChange={(e) => handleSaveStrategyChange(e.target.value)}
+            onChange={(event) => handleSaveStrategyChange(event.target.value)}
           >
-            {SAVE_STRATEGY_OPTIONS.map(s => (
-              <option key={s.key} value={s.key}>{s.label}</option>
+            {SAVE_STRATEGY_OPTIONS.map((strategy) => (
+              <option key={strategy.key} value={strategy.key}>
+                {strategy.label}
+              </option>
             ))}
           </select>
         </div>
 
+        {/* DIP buttons */}
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <button
+            onClick={closeInProgress}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Zamknij wszystkie karty w kolumnie In Progress"
+          >
+            Zamknij In Progress
+          </button>
+          <button
+            onClick={exportDoneCsv}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Eksportuj ukończone karty do CSV"
+          >
+            Eksport DONE (CSV)
+          </button>
+        </div>
+
+        {/* ISP buttons */}
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <button
+            onClick={closeBlockedIsp}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Zamknij wszystkie karty w kolumnie Blocked (ISP)"
+          >
+            Zamknij Blocked (ISP)
+          </button>
+          <button
+            onClick={exportDoneJsonIsp}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Eksportuj ukończone karty w JSON (ISP)"
+          >
+            Eksport DONE JSON (ISP)
+          </button>
+        </div>
+
+        {/* Undo / Redo */}
         <div className="ml-auto flex items-center gap-2">
           <button
             disabled={!can.canUndo}
@@ -134,12 +252,16 @@ export default function App() {
         )}
       </div>
 
+      {/* Main */}
       <main className="mx-auto max-w-6xl px-4 py-6">
-        <h1 className="text-3xl font-bold tracking-tight">Kanban – Wzorce projektowe</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Kanban – Wzorce projektowe
+        </h1>
         <p className="text-slate-500">
-          + Mediator (UI panels)
+          Factory • Singleton • Builder • Prototype • Facade • Decorator •
+          Bridge • Interpreter • Iterator • State • Command • Memento •
+          Strategy • Mediator • DIP • ISP
         </p>
-
         <div className="mt-6">
           {view === "board" && <Board sortKey={sortKey} />}
         </div>
