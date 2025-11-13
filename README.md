@@ -202,3 +202,52 @@ Koordynuje komunikację między panelami UI:
 | Strategy (save) | `src/strategy/save.js` | Tryby zapisu (natychmiastowy, debounce, wsadowy). |
 | Mediator | `src/mediator/UIBus.js` | Bus zdarzeń UI (SearchBar ↔ Board ↔ Composer ↔ EditModal). |
 | Observer | `src/store/StoreContext.jsx`, `src/store/index.js` | Aktualizacja komponentów po zmianie Store. |
+
+
+## Lab 3
+
+### DIP
+
+W ramach laboratorium 3 w projekcie zastosowano zasadę odwracania zależności (DIP).  
+Celem było rozdzielenie warstwy aplikacyjnej (przypadki użycia) od detali implementacyjnych (store, toasty, eksport).
+
+### Struktura
+
+Folder: `src/dip/`
+
+- `contracts.js`  
+  Zawiera trzy abstrakcyjne interfejsy:
+  - `ITaskRepository` – abstrakcja repozytorium zadań (odczyt i zapis listy zadań),
+  - `INotifier` – abstrakcja systemu powiadomień (typ + treść komunikatu),
+  - `IExporter` – abstrakcja eksportera listy zadań do pliku.
+
+- `abstracts.js`  
+  Klasy abstrakcyjne rozszerzające interfejsy o wspólne metody pomocnicze:
+  - `AbstractTaskRepository` – helper `filter(tasks, pred)`,
+  - `AbstractNotifier` – aliasy `info/success/error` dla `notify`,
+  - `AbstractExporter` – helper `fileWithDate(prefix, ext)` do generowania nazw plików.
+
+- `impls.js`  
+  Konkrety niskopoziomowe:
+  - `LocalStateTaskRepository` – repozytorium oparte o stan aplikacji (todoStore),
+  - `ToastNotifier` – implementacja powiadomień wykorzystująca Mediator (`uiBus` i toasty),
+  - `CsvExporter` – eksporter zadań do pliku CSV.
+
+- `usecases.js`  
+  Warstwa wysokopoziomowa (logika aplikacyjna), która zależy wyłącznie od abstrakcji:
+  - `TaskUseCases` – przyjmuje w konstruktorze `ITaskRepository`, `INotifier`, `IExporter`,
+  - `completeAllInStatus(status)` – masowo zamyka karty o danym statusie,
+  - `exportDone()` – eksportuje wszystkie ukończone karty do pliku i zwraca obiekt pliku.
+
+- `wiring.js`  
+  Miejsce, w którym następuje składanie zależności (kompozycja):
+  - tworzone są konkretne implementacje: `LocalStateTaskRepository`, `ToastNotifier`, `CsvExporter`,
+  - tworzone są przypadki użycia: `new TaskUseCases(repo, notifier, exporter)`,
+  - eksportowany jest kontener:
+    ```js
+    export const dipContainer = { repo, notifier, exporter, usecases };
+    ```
+
+### Integracja z App.jsx
+
+W pliku `src/app/App.jsx` dodano dwa przyciski 
