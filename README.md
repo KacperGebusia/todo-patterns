@@ -251,3 +251,63 @@ Folder: `src/dip/`
 ### Integracja z App.jsx
 
 W pliku `src/app/App.jsx` dodano dwa przyciski 
+
+### ISP
+
+Drugą częścią laboratorium 3 jest zastosowanie zasady **segregacji interfejsów (ISP)**.  
+Zamiast tworzyć „grube” interfejsy, które zawierają zbyt wiele metod naraz, projekt dzieli je na mniejsze, spójne kontrakty.  
+Każda klasa implementuje tylko te interfejsy, których naprawdę potrzebuje.
+
+### Struktura
+
+Folder: `src/isp/`
+
+- `fat.js`  
+  Zawiera 3 przykładowe „grube” interfejsy (anty-przykład ISP):
+  - `ITaskServiceFat` – łączy w sobie: odczyt, zapis, tworzenie, aktualizację, usuwanie, ruch kart i operacje masowe,
+  - `IExportServiceFat` – wymaga jednocześnie obsługi eksportu do CSV, JSON i ICS,
+  - `INotifyServiceFat` – wymaga zaimplementowania toast/alert/confirm/logów w jednej klasie.
+
+- `segregated.js`  
+  Zawiera podział tych „grubych” interfejsów na małe, wyspecjalizowane kontrakty:
+  - repozytorium zadań:
+    - `ITaskReader` – tylko odczyt listy zadań,
+    - `ITaskWriter` – tylko zapis listy zadań,
+    - `ITaskCreator` – tylko tworzenie,
+    - `ITaskUpdater` – tylko aktualizacja,
+    - `ITaskRemover` – tylko usuwanie,
+    - `ITaskMover` – tylko przenoszenie kart między kolumnami,
+    - `ITaskBulkCloser` – tylko hurtowe zamykanie zadań;
+  - eksport:
+    - `IExportCSV` – eksport do CSV,
+    - `IExportJSON` – eksport do JSON,
+    - `IExportICS` – eksport do ICS (kalendarz);
+  - powiadomienia:
+    - `IToast` – toasty,
+    - `IAlert` – alerty,
+    - `IConfirm` – potwierdzenia,
+    - `ILog` – logowanie.
+
+- `impls.js`  
+  Konkretne implementacje wąskich interfejsów:
+  - `StoreTaskReader`, `StoreTaskWriter`, `StoreTaskCreator`, `StoreTaskUpdater`, `StoreTaskRemover`, `StoreTaskMover`, `StoreTaskBulkCloser` – operują na `todoStore`, każdy realizuje tylko jedną grupę operacji,
+  - `ExportCSV`, `ExportJSON`, `ExportICS` – osobne klasy odpowiedzialne za pojedynczy format eksportu,
+  - `ToastNotifier`, `AlertNotifier`, `ConfirmDialog`, `ConsoleLogger` – wyspecjalizowane implementacje dla powiadomień.
+
+- `adapter-fat.js`  
+  Adaptery, które składają „grube” interfejsy z wielu małych:
+  - `TaskServiceAdapter` – implementuje `ITaskServiceFat`, ale wewnętrznie korzysta z: `ITaskReader`, `ITaskWriter`, `ITaskCreator`, `ITaskUpdater`, `ITaskRemover`, `ITaskMover`, `ITaskBulkCloser`,
+  - `ExportServiceAdapter` – implementuje `IExportServiceFat` na bazie `IExportCSV`, `IExportJSON`, `IExportICS`,
+  - `NotifyServiceAdapter` – implementuje `INotifyServiceFat` na bazie `IToast`, `IAlert`, `IConfirm`, `ILog`.
+
+- `wiring.js`  
+  Plik odpowiedzialny za kompozycję obiektów i proste przypadki użycia oparte na wąskich interfejsach:
+  - tworzy instancje: `StoreTaskReader`, `StoreTaskWriter`, `StoreTaskBulkCloser`, `ExportCSV`, `ExportJSON`, `ExportICS`, `ToastNotifier` itd.,
+  - tworzy adaptery „grubych” interfejsów: `taskServiceFat`, `exportServiceFat`, `notifyServiceFat` (jeśli gdzieś wymagane jest stare API),
+  - eksportuje dwa przykładowe use-cases:
+    - `closeAllInStatus(status)` – korzysta tylko z `reader`, `writer` i `toast`, masowo zamyka karty w zadanym statusie,
+    - `exportDoneAs(format)` – czyta ukończone zadania, wybiera odpowiedni eksporter (`csv/json/ics`) i zwraca obiekt pliku.
+
+### Integracja z App.jsx
+
+W pliku `src/app/App.jsx` można pokazać działanie ISP poprzez dwa przyciski w toolbarze:
