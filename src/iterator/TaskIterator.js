@@ -1,5 +1,8 @@
 // src/iterator/TaskIterator.js
-// [PATTERN: Iterator] — iterowanie po wynikach z obsługą stronicowania
+// Prosty iterator ze stronicowaniem.
+// Użycie:
+// const iterator = new TaskIterator(items, { pageSize: 20 });
+// const { items: page, pageCount } = iterator.getPage(1);
 
 export class TaskIterator {
   constructor(items = [], { pageSize = 20 } = {}) {
@@ -7,41 +10,53 @@ export class TaskIterator {
     this.setItems(items);
   }
 
-  normalizePageSize(size) {
-    const numeric = Number(size);
-    return Math.max(1, numeric || 20);
-  }
-
-  normalizeItems(items) {
-    return Array.isArray(items) ? items : [];
-  }
-
-  calculatePageCount(itemCount) {
-    return Math.max(1, Math.ceil(itemCount / this.pageSize));
-  }
-
-  clampPageNumber(pageNumber) {
-    const n = Number(pageNumber) || 1;
-    return Math.min(Math.max(1, n), this.pageCount);
-  }
-
   setItems(items) {
-    this.allItems = this.normalizeItems(items);
-    this.totalItems = this.allItems.length;
-    this.pageCount = this.calculatePageCount(this.totalItems);
+    this.items = Array.isArray(items) ? items : [];
+    this.totalCount = this.items.length;
+    this.pageCount = this.computePageCount(
+      this.totalCount,
+      this.pageSize
+    );
   }
 
   getPage(pageNumber = 1) {
-    const pageIndex = this.clampPageNumber(pageNumber);
-    const startIndex = (pageIndex - 1) * this.pageSize;
+    const normalizedPage =
+      this.normalizePageNumber(pageNumber);
+    const startIndex =
+      (normalizedPage - 1) * this.pageSize;
     const endIndex = startIndex + this.pageSize;
 
     return {
-      items: this.allItems.slice(startIndex, endIndex),
-      page: pageIndex,
+      items: this.items.slice(startIndex, endIndex),
+      page: normalizedPage,
       pageCount: this.pageCount,
-      total: this.totalItems,
+      total: this.totalCount,
       pageSize: this.pageSize,
     };
+  }
+
+  // =====================
+  // UTILS
+  // =====================
+
+  normalizePageSize(rawPageSize) {
+    const numeric = Number(rawPageSize) || 20;
+    return Math.max(1, numeric);
+  }
+
+  computePageCount(totalCount, pageSize) {
+    if (!totalCount) return 1;
+    const pages = Math.ceil(totalCount / pageSize);
+    return Math.max(1, pages);
+  }
+
+  normalizePageNumber(rawPageNumber) {
+    const numeric =
+      Number(rawPageNumber) || 1;
+    const clamped = Math.min(
+      Math.max(1, numeric),
+      this.pageCount
+    );
+    return clamped;
   }
 }

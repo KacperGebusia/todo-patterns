@@ -311,3 +311,122 @@ Folder: `src/isp/`
 ### Integracja z App.jsx
 
 W pliku `src/app/App.jsx` można pokazać działanie ISP poprzez dwa przyciski w toolbarze:
+
+
+
+W ramach kolejnych etapów projektu przebudowano znaczną część kodu, aby spełniał zasady:
+
+- **funkcja = jeden poziom abstrakcji**,  
+- **struktura pliku od ogółu do szczegółu (top → bottom)**,  
+- **komponenty i helpery pogrupowane w logiczne sekcje**,  
+- **intencjonalne nazwy — funkcja robi to, co sugeruje jej nazwa**,  
+- **brak mieszania logiki UI, logiki domenowej i niskopoziomowych operacji w jednej funkcji**.
+
+---
+
+## ✔️ 1. Porządkowanie — funkcje tylko na jednym poziomie abstrakcji
+
+W wielu miejscach kodu logika była wymieszana:
+
+- funkcje UI wykonywały logikę domenową,
+- funkcje wysokopoziomowe używały niskopoziomowych operacji,
+- duże funkcje wykonywały kilka różnych czynności naraz.
+
+Kod został uporządkowany poprzez:
+
+### 🔹 Wydzielenie funkcji pomocniczych (helpers)
+Przykłady:
+- formatowanie dat wyciągnięte z `Card.jsx`,
+- logika drag&drop w `Column.jsx`,
+- paginacja wyniesiona do `usePager()` w `ResultsList.jsx`.
+
+### 🔹 Każda funkcja robi jedną rzecz
+Przykłady:
+
+| Funkcja | Przed | Po |
+|--------|-------|----|
+| `handleDrop()` | parsuje payload + liczy indeks + zmienia stan | tylko przechwytuje event → deleguje na małe funkcje |
+| `submit()` (SearchBar) | UI + logika | UI, logika w `emitQuery()` |
+| `onDuplicate()` | tworzy kopię + nadaje meta + wrzuca do store | delegacja do buildera + commandów |
+
+Dzięki temu:
+
+- funkcje UI nie zawierają logiki domenowej,  
+- logika nie wykonuje operacji UI,  
+- helpery zawierają tylko niski poziom abstrakcji.
+
+---
+
+## ✔️ 2. Struktura pliku top → bottom
+
+Każdy plik został przebudowany, aby jego struktura była czytelna:
+
+1. **główny komponent/klasa**  
+2. **podkomponenty**  
+3. **hooki**  
+4. **utils/helpers**  
+
+To wprowadza przewidywalność — czytamy od ogółu do szczegółu.
+
+Taki układ zastosowano m.in. w:
+
+- `Card.jsx`
+- `Column.jsx`
+- `ResultsList.jsx`
+- `SearchBar.jsx`
+- `TaskIterator.js`
+- `UIBus.js`
+
+---
+
+## ✔️ 3. Uporządkowane pliki (przerobione)
+
+### 🔹 Card.jsx
+- główny komponent na górze,
+- podkomponenty: `StatusBadge`, `CardTypeBadge`, `StatusSelect`,
+- wszystkie operacje pomocnicze na dole,
+- funkcje są jednopoziomowe.
+
+### 🔹 Column.jsx
+- czysty przepływ: **UI → logika → helpers → utils**,
+- `parseDragPayload()` i `buildPayload()` na dole,
+- logika drag&drop uproszczona.
+
+### 🔹 ResultsList.jsx
+- paginacja w hooku `usePager()`,
+- komponenty: `Row`, `Summary`, `IconButton`, `PagerControls`,
+- util `formatDeadline()` na końcu.
+
+### 🔹 SearchBar.jsx
+- `useSyncQueryFromMediator()` wydzielony z komponentu,
+- UI jest cienką warstwą,
+- logika emisji zapytań w `emitQuery()`.
+
+### 🔹 TaskIterator.js
+- generyczna logika rozbita na małe funkcje:
+  - `normalizePageSize()`
+  - `computePageCount()`
+  - `normalizePageNumber()`
+- klasa czyta się od ogółu do szczegółu.
+
+### 🔹 UIBus.js
+- dodano `ensureListenerSet()` i `safeInvokeHandler()`,
+- mediator ma jasną strukturę top → bottom.
+
+---
+
+## 📌 Podsumowanie
+
+W ramach tego zadania:
+
+- Każda funkcja została ograniczona do **jednego poziomu abstrakcji**.
+- Każdy plik otrzymał strukturę **top → bottom**, od ogółu do szczegółu.
+- Kod jest czytelniejszy, bardziej spójny i zgodny z zasadami Clean Code.
+- Kod przygotowano do dalszych laboratoriów (łatwiej będzie rozszerzać).
+
+Wprowadzono spójną i przewidywalną architekturę, w której:
+
+- komponenty wywołują podkomponenty,
+- podkomponenty korzystają z hooków,
+- hooki korzystają z helperów,
+- helpery wykonują tylko najniższy poziom logiki.

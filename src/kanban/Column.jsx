@@ -2,23 +2,9 @@
 
 import Card from "./Card";
 
-function preventDefaultDragOver(event) {
-  event.preventDefault();
-}
-
-function parseDragPayload(payload) {
-  const safePayload = payload || "";
-  const [taskId, indexString] = safePayload.split("|");
-  const index = Number(indexString);
-  return { taskId, index };
-}
-
-function getDropIndex(tasks, parsedIndex) {
-  if (Number.isFinite(parsedIndex)) {
-    return parsedIndex;
-  }
-  return tasks.length;
-}
+// =====================
+// GŁÓWNY KOMPONENT
+// =====================
 
 export default function Column({
   title,
@@ -30,46 +16,106 @@ export default function Column({
   onDelete,
   onChangeState,
 }) {
-  function handleDrop(event) {
-    const payload = event.dataTransfer.getData("text/plain");
-    const { taskId, index } = parseDragPayload(payload);
-    const dropIndex = getDropIndex(tasks, index);
-    onDropCard(taskId, status, dropIndex);
-  }
+  const handleDragOver = (event) => {
+    event.preventDefault();
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    const payload =
+      event.dataTransfer.getData("text/plain");
+    const { id, index } =
+      parseDragPayload(payload);
+
+    const targetIndex = Number.isFinite(index)
+      ? index
+      : tasks.length;
+
+    onDropCard(id, status, targetIndex);
+  };
 
   return (
     <div
       className="bg-slate-50 rounded-2xl p-3 border w-full min-h-[200px]"
-      onDragOver={preventDefaultDragOver}
+      onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">{title}</h3>
-        <span className="text-xs text-slate-500">
-          {tasks.length}
-        </span>
-      </div>
-
-      <div className="space-y-3">
-        {tasks.map((task, index) => (
-          <Card
-            key={task.id}
-            task={task}
-            onEdit={onEdit}
-            onDuplicate={onDuplicate}
-            onDelete={onDelete}
-            onChangeState={onChangeState}
-            draggableProps={{
-              draggable: true,
-              onDragStart: (event) =>
-                event.dataTransfer.setData(
-                  "text/plain",
-                  `${task.id}|${index}`
-                ),
-            }}
-          />
-        ))}
-      </div>
+      <Header title={title} count={tasks.length} />
+      <CardsList
+        tasks={tasks}
+        onEdit={onEdit}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+        onChangeState={onChangeState}
+      />
     </div>
   );
+}
+
+// =====================
+// PODKOMPONENTY
+// =====================
+
+function Header({ title, count }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <h3 className="font-semibold">{title}</h3>
+      <span className="text-xs text-slate-500">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function CardsList({
+  tasks,
+  onEdit,
+  onDuplicate,
+  onDelete,
+  onChangeState,
+}) {
+  return (
+    <div className="space-y-3">
+      {tasks.map((task, index) => (
+        <Card
+          key={task.id}
+          task={task}
+          onEdit={onEdit}
+          onDuplicate={onDuplicate}
+          onDelete={onDelete}
+          onChangeState={onChangeState}
+          draggableProps={{
+            draggable: true,
+            onDragStart: (event) =>
+              handleDragStart(event, task.id, index),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// =====================
+// UTILS
+// =====================
+
+function handleDragStart(event, id, index) {
+  event.dataTransfer.setData(
+    "text/plain",
+    `${id}|${index}`
+  );
+}
+
+function parseDragPayload(payload) {
+  const [id, indexString] = String(
+    payload || ""
+  ).split("|");
+
+  const indexValue = Number(indexString);
+  return {
+    id,
+    index: Number.isFinite(indexValue)
+      ? indexValue
+      : NaN,
+  };
 }

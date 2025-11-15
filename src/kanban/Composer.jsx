@@ -1,82 +1,44 @@
 // src/kanban/Composer.jsx
+
 import { useEffect, useRef, useState } from "react";
 import { PlusCircle } from "lucide-react";
 import { TaskFactory } from "../domain/factory";
 import { TaskBuilder } from "../builder/TaskBuilder";
+import { useStore } from "../store/StoreContext";
 import { commandBus, CreateInCommand } from "../command";
 import { uiBus } from "../mediator/UIBus";
 
 const STATUSES = [
-  { value: "todo", valueLabel: "To Do" },
-  { value: "in_progress", valueLabel: "In Progress" },
-  { value: "blocked", valueLabel: "Blocked" },
-  { value: "done", valueLabel: "Done" },
+  { value: "todo",        label: "To Do" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "blocked",     label: "Blocked" },
+  { value: "done",        label: "Done" },
 ];
 
-function createDefaultDueIso() {
-  const oneDayMs = 24 * 3600 * 1000;
-  return new Date(Date.now() + oneDayMs).toISOString().slice(0, 16);
-}
-
-function buildTaskFromForm({ title, type, status, priority, due }) {
-  const builder = new TaskBuilder()
-    .title(title)
-    .type(type)
-    .status(status);
-
-  if (type === "priority") {
-    builder.priority(priority);
-  }
-
-  if (type === "deadline") {
-    builder.due(due);
-  }
-
-  const properties = builder.build();
-  return TaskFactory.create(type, properties);
-}
-
-function showSuccessToast() {
-  uiBus.emit("TOAST", {
-    type: "success",
-    message: "Dodano kartę",
-  });
-}
-
-function showErrorToast() {
-  uiBus.emit("TOAST", {
-    type: "error",
-    message: "Błąd dodawania",
-  });
-}
+// =====================
+// GŁÓWNY KOMPONENT
+// =====================
 
 export default function Composer() {
+  const { todoStore } = useStore(); // zostawione dla spójności API, nawet jeśli aktualnie nieużywane
+
   const [title, setTitle] = useState("");
   const [type, setType] = useState("simple");
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState(2);
-  const [due, setDue] = useState(createDefaultDueIso);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [due, setDue] = useState(getDefaultDueDateInputValue);
+  const [error, setError] = useState("");
+
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    const unsubscribe = uiBus.on("FOCUS_COMPOSER", () => {
-      inputRef.current?.focus();
-    });
-    return unsubscribe;
-  }, []);
+  useComposerFocus(inputRef);
 
-  function resetForm() {
-    setTitle("");
-    setErrorMessage("");
-  }
-
-  async function handleSubmit(event) {
+  const handleSubmit = async (event) => {
     event?.preventDefault?.();
-    setErrorMessage("");
+    setError("");
 
     try {
-      const task = buildTaskFromForm({
+      const taskProps = buildTaskProps({
         title,
         type,
         status,
@@ -84,19 +46,13 @@ export default function Composer() {
         due,
       });
 
-      await commandBus.execute(
-        new CreateInCommand(status, task)
-      );
-
-      resetForm();
-      showSuccessToast();
-    } catch (error) {
-      const humanError =
-        error?.message || "Nie udało się dodać zadania.";
-      setErrorMessage(humanError);
-      showErrorToast();
+      const task = TaskFactory.create(type, taskProps);
+      await saveNewTask(status, task);
+      handleSubmitSuccess(setTitle);
+    } catch (submitError) {
+      handleSubmitError(submitError, setError);
     }
-  }
+  };
 
   return (
     <form
@@ -160,12 +116,12 @@ export default function Composer() {
         }
         className="border rounded-xl px-3 py-2"
       >
-        {STATUSES.map((statusOption) => (
+        {STATUSES.map((s) => (
           <option
-            key={statusOption.value}
-            value={statusOption.value}
+            key={s.value}
+            value={s.value}
           >
-            {statusOption.valueLabel}
+            {s.label}
           </option>
         ))}
       </select>
@@ -177,11 +133,93 @@ export default function Composer() {
         Dodaj
       </button>
 
-      {errorMessage && (
+      {error && (
         <div className="md:col-span-6 text-sm text-red-600">
-          {errorMessage}
+          {error}
         </div>
       )}
     </form>
   );
+}
+
+// =====================
+// HOOKI / POZIOM ŚREDNI
+// =====================
+
+function useComposerFocus(inputRef) {
+  useEffect(() => {
+    const handleFocusComposer = () => {
+      inputRef.current?.focus();
+    };
+
+    const unsubscribe = uiBus.on(
+      "FOCUS_COMPOSER",
+      handleFocusComposer
+    );
+    return unsubscribe;
+  }, [inputRef]);
+}
+
+// =====================
+// LOGIKA BIZNESOWA (BUILDER + COMMAND)
+// =====================
+
+function buildTaskProps({
+  title,
+  type,
+  status,
+  priority,
+  due,
+}) {
+  const builder = new TaskBuilder()
+    .title(title)
+    .type(type)
+    .status(status);
+
+  if (type === "priority") {
+    builder.priority(priority);
+  }
+
+  if (type === "deadline") {
+    builder.due(due);
+  }
+
+  return builder.build();
+}
+
+async function saveNewTask(status, task) {
+  await commandBus.execute(
+    new CreateInCommand(status, task)
+  );
+}
+
+function handleSubmitSuccess(setTitle) {
+  setTitle("");
+  uiBus.emit("TOAST", {
+    type: "success",
+    message: "Dodano kartę",
+  });
+}
+
+function handleSubmitError(error, setError) {
+  const message =
+    error?.message ||
+    "Nie udało się dodać zadania.";
+  setError(message);
+
+  uiBus.emit("TOAST", {
+    type: "error",
+    message: "Błąd dodawania",
+  });
+}
+
+// =====================
+// UTILS (NAJNIŻSZY POZIOM)
+// =====================
+
+function getDefaultDueDateInputValue() {
+  const tomorrow = Date.now() + 24 * 3600 * 1000;
+  return new Date(tomorrow)
+    .toISOString()
+    .slice(0, 16);
 }

@@ -4,30 +4,24 @@ import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { uiBus } from "../mediator/UIBus";
 
+// =====================
+// GŁÓWNY KOMPONENT
+// =====================
+
 export default function SearchBar({ initial = "" }) {
   const [query, setQuery] = useState(initial);
 
-  // Reaguj na SET_QUERY z innych paneli (Mediator)
-  useEffect(() => {
-    const unsubscribe = uiBus.on("SET_QUERY", ({ query }) => {
-      setQuery(query ?? "");
-    });
-    return unsubscribe;
-  }, []);
+  useSyncQueryFromMediator(setQuery);
 
-  function emitSearchQuery(nextQuery) {
-    uiBus.emit("SET_QUERY", { query: nextQuery });
-  }
-
-  function handleSubmit(event) {
+  const handleSubmit = (event) => {
     event.preventDefault();
-    emitSearchQuery(query);
-  }
+    emitQuery(query);
+  };
 
-  function handleClear() {
+  const handleClear = () => {
     setQuery("");
-    emitSearchQuery("");
-  }
+    emitQuery("");
+  };
 
   return (
     <form
@@ -37,7 +31,9 @@ export default function SearchBar({ initial = "" }) {
       <Search />
       <input
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) =>
+          setQuery(event.target.value)
+        }
         placeholder='Szukaj… np. tag:work status:done "raport" before:2025-12-31'
         className="w-full outline-none"
       />
@@ -56,4 +52,26 @@ export default function SearchBar({ initial = "" }) {
       </button>
     </form>
   );
+}
+
+// =====================
+// HOOKI / UTILS
+// =====================
+
+function useSyncQueryFromMediator(setQuery) {
+  useEffect(() => {
+    const handleSetQuery = ({ query }) => {
+      setQuery(query ?? "");
+    };
+
+    const unsubscribe = uiBus.on(
+      "SET_QUERY",
+      handleSetQuery
+    );
+    return unsubscribe;
+  }, [setQuery]);
+}
+
+function emitQuery(query) {
+  uiBus.emit("SET_QUERY", { query });
 }

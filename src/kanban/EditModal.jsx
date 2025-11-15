@@ -1,4 +1,5 @@
 // src/kanban/EditModal.jsx
+
 import { useEffect, useState } from "react";
 import { X, Save, Star, CalendarDays } from "lucide-react";
 import { useStore } from "../store/StoreContext";
@@ -6,103 +7,166 @@ import { setTags } from "../decorators";
 import { uiBus } from "../mediator/UIBus";
 
 const STATUSES = [
-  { value: "todo", valueLabel: "To Do" },
-  { value: "in_progress", valueLabel: "In Progress" },
-  { value: "blocked", valueLabel: "Blocked" },
-  { value: "done", valueLabel: "Done" },
+  { value: "todo",        label: "To Do" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "blocked",     label: "Blocked" },
+  { value: "done",        label: "Done" },
 ];
 
-function toIsoLocalOrNow(dateValue) {
-  const baseDate = dateValue
-    ? new Date(dateValue)
-    : new Date();
-  return baseDate.toISOString().slice(0, 16);
-}
+// =====================
+// GŁÓWNY KOMPONENT
+// =====================
 
-function parseTagsCsv(tagsCsv) {
-  return tagsCsv
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
+export default function EditModal() {
+  const { todoStore } = useStore();
+  const controller = useEditModalController(todoStore);
 
-function buildPatchedTask(task, formState) {
-  const {
-    title,
-    type,
-    status,
-    priority,
-    due,
-    tagsArray,
-  } = formState;
-
-  const baseMeta = { ...(task.meta || {}) };
-  const patchedTask = {
-    ...task,
-    title: title.trim() || task.title,
-    type,
-    status,
-    meta: baseMeta,
-  };
-
-  if (type === "priority") {
-    patchedTask.meta.priority = Number(priority);
+  if (!controller.open) {
+    return null;
   }
 
-  if (type === "deadline") {
-    patchedTask.meta.due = new Date(due).toISOString();
-  }
-
-  let patchedWithTags = setTags(patchedTask, tagsArray);
-
-  if (!patchedWithTags.meta.icon && task.meta?.icon) {
-    patchedWithTags.meta.icon = task.meta.icon;
-  }
-
-  return patchedWithTags;
-}
-
-function showSaveSuccessToast() {
-  uiBus.emit("TOAST", {
-    type: "success",
-    message: "Zapisano zmiany",
-  });
-}
-
-function StatusSelect({ status, onChange }) {
   return (
-    <select
-      value={status}
-      onChange={(event) => onChange(event.target.value)}
-      className="w-full border rounded-xl px-3 py-2"
-    >
-      {STATUSES.map((statusOption) => (
-        <option
-          key={statusOption.value}
-          value={statusOption.value}
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white w-full max-w-xl rounded-2xl shadow-lg p-4">
+        <Header onClose={controller.close} />
+
+        <FormFields
+          title={controller.title}
+          setTitle={controller.setTitle}
+          type={controller.type}
+          setType={controller.setType}
+          status={controller.status}
+          setStatus={controller.setStatus}
+          priority={controller.priority}
+          setPriority={controller.setPriority}
+          due={controller.due}
+          setDue={controller.setDue}
+          tags={controller.tags}
+          setTags={controller.setTags}
+        />
+
+        <Footer
+          onSave={controller.save}
+          onCancel={controller.close}
+        />
+      </div>
+    </div>
+  );
+}
+
+// =====================
+// PODKOMPONENTY UI (TEN SAM POZIOM)
+// =====================
+
+function Header({ onClose }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="text-lg font-semibold">
+        Edytuj kartę
+      </h2>
+      <button
+        onClick={onClose}
+        className="w-8 h-8 rounded-xl hover:bg-slate-100 inline-flex items-center justify-center"
+        title="Zamknij"
+      >
+        <X />
+      </button>
+    </div>
+  );
+}
+
+function FormFields({
+  title,
+  setTitle,
+  type,
+  setType,
+  status,
+  setStatus,
+  priority,
+  setPriority,
+  due,
+  setDue,
+  tags,
+  setTags,
+}) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="md:col-span-2">
+        <label className="text-xs text-slate-500">
+          Tytuł
+        </label>
+        <input
+          value={title}
+          onChange={(event) =>
+            setTitle(event.target.value)
+          }
+          className="w-full border rounded-xl px-3 py-2"
+          placeholder="Tytuł karty"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-slate-500">
+          Typ
+        </label>
+        <select
+          value={type}
+          onChange={(event) =>
+            setType(event.target.value)
+          }
+          className="w-full border rounded-xl px-3 py-2"
         >
-          {statusOption.valueLabel}
-        </option>
-      ))}
-    </select>
+          <option value="simple">Simple</option>
+          <option value="priority">Priority</option>
+          <option value="deadline">Deadline</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="text-xs text-slate-500">
+          Status
+        </label>
+        <select
+          value={status}
+          onChange={(event) =>
+            setStatus(event.target.value)
+          }
+          className="w-full border rounded-xl px-3 py-2"
+        >
+          {STATUSES.map((statusOption) => (
+            <option
+              key={statusOption.value}
+              value={statusOption.value}
+            >
+              {statusOption.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {type === "priority" && (
+        <PriorityField
+          priority={priority}
+          setPriority={setPriority}
+        />
+      )}
+
+      {type === "deadline" && (
+        <DeadlineField
+          due={due}
+          setDue={setDue}
+        />
+      )}
+
+      <TagsField
+        tags={tags}
+        setTags={setTags}
+      />
+    </div>
   );
 }
 
-function TypeSelect({ type, onChange }) {
-  return (
-    <select
-      value={type}
-      onChange={(event) => onChange(event.target.value)}
-      className="w-full border rounded-xl px-3 py-2"
-    >
-      <option value="simple">Simple</option>
-      <option value="priority">Priority</option>
-      <option value="deadline">Deadline</option>
-    </select>
-  );
-}
-
-function PriorityField({ priority, onChange }) {
+function PriorityField({ priority, setPriority }) {
   return (
     <div>
       <label className="text-xs text-slate-500 inline-flex items-center gap-1">
@@ -114,7 +178,7 @@ function PriorityField({ priority, onChange }) {
         max={5}
         value={priority}
         onChange={(event) =>
-          onChange(event.target.value)
+          setPriority(event.target.value)
         }
         className="w-full border rounded-xl px-3 py-2"
       />
@@ -122,7 +186,7 @@ function PriorityField({ priority, onChange }) {
   );
 }
 
-function DeadlineField({ due, onChange }) {
+function DeadlineField({ due, setDue }) {
   return (
     <div>
       <label className="text-xs text-slate-500 inline-flex items-center gap-1">
@@ -132,7 +196,7 @@ function DeadlineField({ due, onChange }) {
         type="datetime-local"
         value={due}
         onChange={(event) =>
-          onChange(event.target.value)
+          setDue(event.target.value)
         }
         className="w-full border rounded-xl px-3 py-2"
       />
@@ -140,7 +204,7 @@ function DeadlineField({ due, onChange }) {
   );
 }
 
-function TagsField({ tags, onChange }) {
+function TagsField({ tags, setTags }) {
   return (
     <div className="md:col-span-2">
       <label className="text-xs text-slate-500">
@@ -148,7 +212,9 @@ function TagsField({ tags, onChange }) {
       </label>
       <input
         value={tags}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) =>
+          setTags(event.target.value)
+        }
         className="w-full border rounded-xl px-3 py-2"
         placeholder="tag1, tag2, tag3"
       />
@@ -156,26 +222,31 @@ function TagsField({ tags, onChange }) {
   );
 }
 
-function TitleField({ title, onChange }) {
+function Footer({ onSave, onCancel }) {
   return (
-    <div className="md:col-span-2">
-      <label className="text-xs text-slate-500">
-        Tytuł
-      </label>
-      <input
-        value={title}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full border rounded-xl px-3 py-2"
-        placeholder="Tytuł karty"
-      />
+    <div className="mt-4 flex justify-end gap-2">
+      <button
+        onClick={onSave}
+        className="rounded-xl bg-slate-900 text-white px-4 py-2 inline-flex items-center gap-2"
+      >
+        <Save size={16} /> Zapisz
+      </button>
+      <button
+        onClick={onCancel}
+        className="rounded-xl bg-slate-100 px-4 py-2"
+      >
+        Anuluj
+      </button>
     </div>
   );
 }
 
-export default function EditModal() {
-  const { todoStore } = useStore();
+// =====================
+// HOOK KONTROLUJĄCY MODAL
+// =====================
 
-  const [isOpen, setIsOpen] = useState(false);
+function useEditModalController(todoStore) {
+  const [open, setOpen] = useState(false);
   const [task, setTask] = useState(null);
 
   const [title, setTitle] = useState("");
@@ -183,142 +254,174 @@ export default function EditModal() {
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState(2);
   const [due, setDue] = useState("");
-  const [tagsCsv, setTagsCsvState] = useState("");
+  const [tags, setTagsCsv] = useState("");
 
   useEffect(() => {
-    function handleOpenEdit({ task }) {
+    const handleOpen = ({ task }) => {
       if (!task) return;
+      const initialState =
+        createInitialFormState(task);
+
       setTask(task);
-      setTitle(task.title);
-      setType(task.type);
-      setStatus(task.status ?? "todo");
-      setPriority(task.meta?.priority ?? 2);
-      setDue(
-        toIsoLocalOrNow(task.meta?.due)
-      );
-      setTagsCsvState(
-        (task.meta?.tags || []).join(", ")
-      );
-      setIsOpen(true);
-    }
+      setTitle(initialState.title);
+      setType(initialState.type);
+      setStatus(initialState.status);
+      setPriority(initialState.priority);
+      setDue(initialState.due);
+      setTagsCsv(initialState.tagsCsv);
+      setOpen(true);
+    };
 
-    function handleCloseEdit() {
-      setIsOpen(false);
-    }
+    const handleClose = () => {
+      setOpen(false);
+    };
 
-    const unsubscribeOpen = uiBus.on(
+    const offOpen = uiBus.on(
       "OPEN_EDIT",
-      handleOpenEdit
+      handleOpen
     );
-    const unsubscribeClose = uiBus.on(
+    const offClose = uiBus.on(
       "CLOSE_EDIT",
-      handleCloseEdit
+      handleClose
     );
 
     return () => {
-      unsubscribeOpen();
-      unsubscribeClose();
+      offOpen();
+      offClose();
     };
   }, []);
 
-  async function handleSave() {
+  const save = async () => {
     if (!task) return;
 
-    const tagsArray = parseTagsCsv(tagsCsv);
-
-    const patchedTask = buildPatchedTask(task, {
+    const formState = {
       title,
       type,
       status,
       priority,
       due,
-      tagsArray,
+      tags,
+    };
+
+    const patched = buildUpdatedTask(
+      task,
+      formState
+    );
+
+    await todoStore.update(task.id, patched);
+
+    uiBus.emit("TOAST", {
+      type: "success",
+      message: "Zapisano zmiany",
     });
 
-    await todoStore.update(task.id, patchedTask);
-    showSaveSuccessToast();
-    setIsOpen(false);
+    setOpen(false);
+  };
+
+  const close = () => {
+    setOpen(false);
+  };
+
+  return {
+    open,
+    title,
+    setTitle,
+    type,
+    setType,
+    status,
+    setStatus,
+    priority,
+    setPriority,
+    due,
+    setDue,
+    tags,
+    setTags: setTagsCsv,
+    save,
+    close,
+  };
+}
+
+// =====================
+// LOGIKA BIZNESOWA / UTILS
+// =====================
+
+function createInitialFormState(task) {
+  const safeTask = task || {};
+  const safeMeta = safeTask.meta || {};
+
+  const title = safeTask.title || "";
+  const type = safeTask.type || "simple";
+  const status = safeTask.status || "todo";
+  const priority =
+    safeMeta.priority ?? 2;
+
+  const dueInput = getInitialDueInputValue(
+    safeMeta.due
+  );
+  const tagsCsv = (safeMeta.tags || []).join(
+    ", "
+  );
+
+  return {
+    title,
+    type,
+    status,
+    priority,
+    due: dueInput,
+    tagsCsv,
+  };
+}
+
+function getInitialDueInputValue(rawDue) {
+  const baseDate = rawDue
+    ? new Date(rawDue)
+    : new Date();
+  return baseDate.toISOString().slice(0, 16);
+}
+
+function parseTagsCsvToArray(csv) {
+  if (!csv) return [];
+  return csv
+    .split(",")
+    .map((piece) => piece.trim())
+    .filter(Boolean);
+}
+
+function buildUpdatedTask(task, formState) {
+  const {
+    title,
+    type,
+    status,
+    priority,
+    due,
+    tags,
+  } = formState;
+
+  const tagsArray = parseTagsCsvToArray(tags);
+
+  let patched = {
+    ...task,
+    title: title.trim() || task.title,
+    type,
+    status,
+    meta: {
+      ...(task.meta || {}),
+    },
+  };
+
+  if (type === "priority") {
+    patched.meta.priority = Number(priority);
   }
 
-  if (!isOpen) return null;
+  if (type === "deadline") {
+    patched.meta.due = new Date(due).toISOString();
+  }
 
-  return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-white w-full max-w-xl rounded-2xl shadow-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">
-            Edytuj kartę
-          </h2>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="w-8 h-8 rounded-xl hover:bg-slate-100 inline-flex items-center justify-center"
-            title="Zamknij"
-          >
-            <X />
-          </button>
-        </div>
+  patched = setTags(patched, tagsArray);
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <TitleField
-            title={title}
-            onChange={setTitle}
-          />
+  if (!patched.meta.icon && task.meta?.icon) {
+    patched.meta.icon = task.meta.icon;
+  }
 
-          <div>
-            <label className="text-xs text-slate-500">
-              Typ
-            </label>
-            <TypeSelect
-              type={type}
-              onChange={setType}
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-slate-500">
-              Status
-            </label>
-            <StatusSelect
-              status={status}
-              onChange={setStatus}
-            />
-          </div>
-
-          {type === "priority" && (
-            <PriorityField
-              priority={priority}
-              onChange={setPriority}
-            />
-          )}
-
-          {type === "deadline" && (
-            <DeadlineField
-              due={due}
-              onChange={setDue}
-            />
-          )}
-
-          <TagsField
-            tags={tagsCsv}
-            onChange={setTagsCsvState}
-          />
-        </div>
-
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={handleSave}
-            className="rounded-xl bg-slate-900 text-white px-4 py-2 inline-flex items-center gap-2"
-          >
-            <Save size={16} /> Zapisz
-          </button>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="rounded-xl bg-slate-100 px-4 py-2"
-          >
-            Anuluj
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return patched;
 }
