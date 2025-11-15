@@ -1,16 +1,38 @@
-import { ITaskRepository, INotifier, IExporter } from "./contracts";
+// dip/abstracts.js
+
+import {
+  ITaskRepository,
+  INotifier,
+  IExporter,
+} from "./contracts";
 
 export class AbstractTaskRepository extends ITaskRepository {
-  filter(tasks, pred){ return Array.isArray(tasks) ? tasks.filter(pred) : []; }
+  filter(tasks, predicate) {
+    const safeTasks = Array.isArray(tasks) ? tasks : [];
+    return safeTasks.filter(predicate);
+  }
 }
+
 export class AbstractNotifier extends INotifier {
-  info(msg){ this.notify("info", msg); }
-  success(msg){ this.notify("success", msg); }
-  error(msg){ this.notify("error", msg); }
+  info(message) {
+    this.notify("info", message);
+  }
+
+  success(message) {
+    this.notify("success", message);
+  }
+
+  error(message) {
+    this.notify("error", message);
+  }
 }
+
 export class AbstractExporter extends IExporter {
-  fileWithDate(prefix, ext){
-    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
-    return `${prefix}-${ts}.${ext}`;
+  createDatedFilename(prefix, extension) {
+    const timestamp = new Date()
+      .toISOString()
+      .slice(0, 19)
+      .replace(/[:T]/g, "-");
+    return `${prefix}-${timestamp}.${extension}`;
   }
 }

@@ -31,94 +31,236 @@ import { uiBus } from "../mediator/UIBus";
 
 const PAGE_SIZE = 12;
 
-export default function Board({ sortKey = "kanbanOrder" }) {
+// ===== POMOCNICZE HOOKI / FUNKCJE =====
+
+function useSafeTasksFromStore() {
   const { tasks } = useStore();
-  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  return Array.isArray(tasks) ? tasks : [];
+}
+
+function useQueryFromMediator() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  // Mediator: słuchaj zmian zapytania z SearchBar (SET_QUERY)
   useEffect(() => {
-    const off = uiBus.on("SET_QUERY", ({ query }) => {
+    const unsubscribe = uiBus.on("SET_QUERY", ({ query }) => {
       setQuery(query ?? "");
       setPage(1);
     });
-    return off;
+    return unsubscribe;
   }, []);
 
-  const comparator = useMemo(() => getComparator(sortKey), [sortKey]);
+  return { query, page, setPage };
+}
 
-  // === Interpreter ===
+function useTaskSearchResults(safeTasks, query, sortKey) {
+  const comparator = useMemo(
+    () => getComparator(sortKey),
+    [sortKey]
+  );
+
   const predicate = useMemo(() => {
-    try { return evaluate(parse(lex(query))); } catch { return () => true; }
+    try {
+      const tokens = lex(query);
+      const ast = parse(tokens);
+      return evaluate(ast);
+    } catch {
+      return () => true;
+    }
   }, [query]);
 
-  const results = useMemo(() => {
+  const searchResults = useMemo(() => {
     if (!query.trim()) return [];
     return [...safeTasks].filter(predicate).sort(comparator);
   }, [safeTasks, query, predicate, comparator]);
 
-  // === Iterator ===
-  const iterator = useMemo(() => new TaskIterator(results, { pageSize: PAGE_SIZE }), [results]);
-  const pageData = useMemo(() => iterator.getPage(page), [iterator, page]);
+  return { comparator, searchResults };
+}
 
-  // === Kanban (widok) ===
-  const byStatus = (s) =>
-    safeTasks
-      .filter((t) => (t.status ?? (t.completed ? "done" : "todo")) === s)
-      .sort(comparator);
+function usePaginatedResults(results, page, pageSize) {
+  const iterator = useMemo(
+    () => new TaskIterator(results, { pageSize }),
+    [results, pageSize]
+  );
 
-  // === Command + Memento + FSM ===
-  async function onDropCard(id, status, toIndex) {
-    await commandBus.execute(new MoveCardCommand(id, status, toIndex));
-    await commandBus.execute(new UpdateTaskCommand(id, () => ({ completed: status === "done" })));
+  const pageData = useMemo(
+    () => iterator.getPage(page),
+    [iterator, page]
+  );
+
+  return pageData;
+}
+
+function getTasksByStatus(safeTasks, status, comparator) {
+  return safeTasks
+    .filter((task) => {
+      const rawStatus =
+        task.status ?? (task.completed ? "done" : "todo");
+      return rawStatus === status;
+    })
+    .sort(comparator);
+}
+
+// ===== KOMPONENT GŁÓWNY =====
+
+export default function Board({ sortKey = "kanbanOrder" }) {
+  const safeTasks = useSafeTasksFromStore();
+  const { query, page, setPage } = useQueryFromMediator();
+  const { comparator, searchResults } = useTaskSearchResults(
+    safeTasks,
+    query,
+    sortKey
+  );
+  const pageData = usePaginatedResults(
+    searchResults,
+    page,
+    PAGE_SIZE
+  );
+
+  async function handleDropCard(taskId, status, targetIndex) {
+    await commandBus.execute(
+      new MoveCardCommand(taskId, status, targetIndex)
+    );
+    await commandBus.execute(
+      new UpdateTaskCommand(taskId, () => ({
+        completed: status === "done",
+      }))
+    );
   }
 
-  async function onDuplicate(task) {
-    const copy = TaskFactory.fromJSON(cloneTask(task));
-    await commandBus.execute(new CreateInCommand(task.status ?? "todo", copy));
-    uiBus.emit("TOAST", { type: "success", message: "Zduplikowano kartę" });
+  async function handleDuplicate(task) {
+    const clonedTask = TaskFactory.fromJSON(cloneTask(task));
+    const targetStatus = task.status ?? "todo";
+    await commandBus.execute(
+      new CreateInCommand(targetStatus, clonedTask)
+    );
+    uiBus.emit("TOAST", {
+      type: "success",
+      message: "Zduplikowano kartę",
+    });
   }
 
-  async function onDelete(task) {
-    await commandBus.execute(new RemoveTaskCommand(task.id));
-    uiBus.emit("TOAST", { type: "info", message: "Usunięto kartę" });
+  async function handleDelete(task) {
+    await commandBus.execute(
+      new RemoveTaskCommand(task.id)
+    );
+    uiBus.emit("TOAST", {
+      type: "info",
+      message: "Usunięto kartę",
+    });
   }
 
-  function onEdit(task) {
-    uiBus.emit("OPEN_EDIT", { task }); // zamiast lokalnego state
+  function handleEdit(task) {
+    uiBus.emit("OPEN_EDIT", { task });
   }
 
-  async function onChangeState(task, toState) {
-    if (!canTo(task.status, toState)) return;
-    const patched = transitionTo(task, toState);
-    await commandBus.execute(new MoveCardCommand(task.id, patched.status, Number.MAX_SAFE_INTEGER));
-    await commandBus.execute(new UpdateTaskCommand(task.id, { completed: patched.completed }));
+  async function handleChangeState(task, targetState) {
+    if (!canTo(task.status, targetState)) return;
+
+    const patchedTask = transitionTo(task, targetState);
+
+    await commandBus.execute(
+      new MoveCardCommand(
+        task.id,
+        patchedTask.status,
+        Number.MAX_SAFE_INTEGER
+      )
+    );
+
+    await commandBus.execute(
+      new UpdateTaskCommand(task.id, {
+        completed: patchedTask.completed,
+      })
+    );
   }
+
+  function handlePrevPage() {
+    setPage((currentPage) => Math.max(1, currentPage - 1));
+  }
+
+  function handleNextPage(pageCount) {
+    setPage((currentPage) =>
+      Math.min(pageCount, currentPage + 1)
+    );
+  }
+
+  const showSearchResults = Boolean(query.trim());
 
   return (
     <div className="space-y-6">
       <Composer />
       <SearchBar />
 
-      {query.trim() ? (
+      {showSearchResults ? (
         <ResultsList
           items={pageData.items}
           page={pageData.page}
           pageCount={pageData.pageCount}
           total={pageData.total}
-          onPrev={() => setPage((p) => Math.max(1, p - 1))}
-          onNext={() => setPage((p) => Math.min(pageData.pageCount, p + 1))}
-          onEdit={onEdit}
-          onDuplicate={onDuplicate}
-          onDelete={onDelete}
+          onPrev={handlePrevPage}
+          onNext={() => handleNextPage(pageData.pageCount)}
+          onEdit={handleEdit}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Column title="To Do"        status="todo"        tasks={byStatus("todo")}        onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
-          <Column title="In Progress"  status="in_progress" tasks={byStatus("in_progress")} onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
-          <Column title="Blocked"      status="blocked"     tasks={byStatus("blocked")}     onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
-          <Column title="Done"         status="done"        tasks={byStatus("done")}        onDropCard={onDropCard} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} onChangeState={onChangeState}/>
+          <Column
+            title="To Do"
+            status="todo"
+            tasks={getTasksByStatus(
+              safeTasks,
+              "todo",
+              comparator
+            )}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
+          <Column
+            title="In Progress"
+            status="in_progress"
+            tasks={getTasksByStatus(
+              safeTasks,
+              "in_progress",
+              comparator
+            )}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
+          <Column
+            title="Blocked"
+            status="blocked"
+            tasks={getTasksByStatus(
+              safeTasks,
+              "blocked",
+              comparator
+            )}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
+          <Column
+            title="Done"
+            status="done"
+            tasks={getTasksByStatus(
+              safeTasks,
+              "done",
+              comparator
+            )}
+            onDropCard={handleDropCard}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onChangeState={handleChangeState}
+          />
         </div>
       )}
 

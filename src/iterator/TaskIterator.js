@@ -1,27 +1,46 @@
-// Prosty iterator ze stronicowaniem.
-// Użycie:
-// const it = new TaskIterator(items, { pageSize: 20 });
-// const { items: page, pageCount } = it.getPage(1);
+// src/iterator/TaskIterator.js
+// [PATTERN: Iterator] — iterowanie po wynikach z obsługą stronicowania
 
 export class TaskIterator {
   constructor(items = [], { pageSize = 20 } = {}) {
+    this.pageSize = this.normalizePageSize(pageSize);
     this.setItems(items);
-    this.pageSize = Math.max(1, Number(pageSize) || 20);
   }
+
+  normalizePageSize(size) {
+    const numeric = Number(size);
+    return Math.max(1, numeric || 20);
+  }
+
+  normalizeItems(items) {
+    return Array.isArray(items) ? items : [];
+  }
+
+  calculatePageCount(itemCount) {
+    return Math.max(1, Math.ceil(itemCount / this.pageSize));
+  }
+
+  clampPageNumber(pageNumber) {
+    const n = Number(pageNumber) || 1;
+    return Math.min(Math.max(1, n), this.pageCount);
+  }
+
   setItems(items) {
-    this.items = Array.isArray(items) ? items : [];
-    this.count = this.items.length;
-    this.pageCount = Math.max(1, Math.ceil(this.count / this.pageSize || 1));
+    this.allItems = this.normalizeItems(items);
+    this.totalItems = this.allItems.length;
+    this.pageCount = this.calculatePageCount(this.totalItems);
   }
+
   getPage(pageNumber = 1) {
-    const p = Math.min(Math.max(1, Number(pageNumber) || 1), this.pageCount);
-    const start = (p - 1) * this.pageSize;
-    const end = start + this.pageSize;
+    const pageIndex = this.clampPageNumber(pageNumber);
+    const startIndex = (pageIndex - 1) * this.pageSize;
+    const endIndex = startIndex + this.pageSize;
+
     return {
-      items: this.items.slice(start, end),
-      page: p,
+      items: this.allItems.slice(startIndex, endIndex),
+      page: pageIndex,
       pageCount: this.pageCount,
-      total: this.count,
+      total: this.totalItems,
       pageSize: this.pageSize,
     };
   }

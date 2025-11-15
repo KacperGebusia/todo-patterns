@@ -1,15 +1,75 @@
-// [PATTERN: Builder] — DEKLARACJA
+// src/builder/TaskBuilder.js
+// [PATTERN: Builder] — deklaracja buildera zadań
+
 export class TaskBuilder {
-  constructor(){ this.reset(); }
-  reset(){ this._title=""; this._type="simple"; this._meta={}; this._completed=false; this._status="todo"; return this; }
-  title(v){ this._title = String(v ?? "").trim(); return this; }
-  type(v){ this._type = v || "simple"; return this; }
-  priority(p){ this._meta.priority = Number(p ?? 1); return this; }
-  due(dtLocal){ this._meta.due = new Date(dtLocal).toISOString(); return this; }
-  status(s){ this._status = s || "todo"; return this; }
-  completed(flag){ this._completed = Boolean(flag); return this; }
-  build(){
-    if (!this._title) throw new Error("Brak tytułu zadania.");
-    return { title: this._title, completed: this._completed, type: this._type, status: this._status, meta: { ...this._meta } };
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.titleText = "";
+    this.typeName = "simple";
+    this.meta = {};
+    this.isCompleted = false;
+    this.statusName = "todo";
+    return this;
+  }
+
+  setTitle(rawTitle) {
+    this.titleText = String(rawTitle ?? "").trim();
+    return this;
+  }
+
+  setType(rawType) {
+    this.typeName = rawType || "simple";
+    return this;
+  }
+
+  setPriority(priorityValue) {
+    this.meta.priority = Number(priorityValue ?? 1);
+    return this;
+  }
+
+  setDueDate(localDateTimeValue) {
+    const iso = this.toIsoString(localDateTimeValue);
+    if (iso) {
+      this.meta.due = iso;
+    }
+    return this;
+  }
+
+  setStatus(rawStatus) {
+    this.statusName = rawStatus || "todo";
+    return this;
+  }
+
+  setCompleted(flag) {
+    this.isCompleted = Boolean(flag);
+    return this;
+  }
+
+  toIsoString(localDateTimeValue) {
+    if (!localDateTimeValue) return null;
+    const date = new Date(localDateTimeValue);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString();
+  }
+
+  validate() {
+    if (!this.titleText) {
+      throw new Error("Brak tytułu zadania.");
+    }
+  }
+
+  build() {
+    this.validate();
+
+    return {
+      title: this.titleText,
+      completed: this.isCompleted,
+      type: this.typeName,
+      status: this.statusName,
+      meta: { ...this.meta },
+    };
   }
 }

@@ -1,43 +1,104 @@
-import { AbstractTaskRepository, AbstractNotifier, AbstractExporter } from "./abstracts";
+// dip/impls.js
+
+import {
+  AbstractTaskRepository,
+  AbstractNotifier,
+  AbstractExporter,
+} from "./abstracts";
 import { uiBus } from "../mediator/UIBus";
 
+// ===== IMPLEMENTACJA REPOZYTORIUM (DIP) =====
+
 export class LocalStateTaskRepository extends AbstractTaskRepository {
-  constructor({ getState, setState }){
+  constructor({ getState, setState }) {
     super();
     this.getState = getState;
     this.setState = setState;
   }
-  async listTasks(){ return Array.isArray(this.getState()) ? this.getState() : []; }
-  async saveTasks(tasks){ await this.setState(Array.isArray(tasks) ? tasks : []); }
+
+  async listTasks() {
+    const state = this.getState();
+    return Array.isArray(state) ? state : [];
+  }
+
+  async saveTasks(tasks) {
+    const safeTasks = Array.isArray(tasks) ? tasks : [];
+    await this.setState(safeTasks);
+  }
 }
 
+// ===== IMPLEMENTACJA NOTIFIERA (DIP) =====
+
 export class ToastNotifier extends AbstractNotifier {
-  notify(type, message){
+  notify(type, message) {
     uiBus.emit("TOAST", { type, message });
   }
 }
 
+// ===== IMPLEMENTACJA EKSPORTERA CSV (DIP) =====
+
+function normalizeTasks(tasks) {
+  return Array.isArray(tasks) ? tasks : [];
+}
+
+function buildCsvHeader() {
+  return [
+    "id",
+    "title",
+    "status",
+    "type",
+    "createdAt",
+    "completed",
+    "order",
+    "priority",
+    "due",
+    "tags",
+  ];
+}
+
+function escapeCsvField(value) {
+  if (typeof value !== "string") {
+    return String(value ?? "");
+  }
+  const escaped = value.replaceAll('"', '""');
+  return `"${escaped}"`;
+}
+
+function buildCsvRowFromTask(task) {
+  const fields = [
+    task.id,
+    task.title || "",
+    task.status,
+    task.type,
+    task.createdAt ?? "",
+    task.completed ? "1" : "0",
+    task.order ?? "",
+    task.meta?.priority ?? "",
+    task.meta?.due ?? "",
+    (task.meta?.tags || []).join("|"),
+  ];
+
+  return fields.map(escapeCsvField).join(",");
+}
+
 export class CsvExporter extends AbstractExporter {
-  export(tasks){
-    const safe = Array.isArray(tasks) ? tasks : [];
-    const header = ["id","title","status","type","createdAt","completed","order","priority","due","tags"];
-    const lines = [header.join(",")];
-    safe.forEach(t => {
-      const row = [
-        t.id,
-        (t.title||"").replaceAll('"','""'),
-        t.status,
-        t.type,
-        t.createdAt ?? "",
-        t.completed ? "1" : "0",
-        t.order ?? "",
-        t.meta?.priority ?? "",
-        t.meta?.due ?? "",
-        (t.meta?.tags||[]).join("|")
-      ].map(v => typeof v === "string" ? `"${v}"` : String(v));
-      lines.push(row.join(","));
-    });
-    const data = lines.join("\n");
-    return { mime: "text/csv", filename: this.fileWithDate("tasks", "csv"), data };
+  export(tasks) {
+    const safeTasks = normalizeTasks(tasks);
+    const headerRow = buildCsvHeader().join(",");
+
+    const rows = safeTasks.map((task) =>
+      buildCsvRowFromTask(task)
+    );
+
+    const csvText = [headerRow, ...rows].join("\n");
+
+    return {
+      mime: "text/csv",
+      filename: this.createDatedFilename(
+        "tasks",
+        "csv"
+      ),
+      data: csvText,
+    };
   }
 }

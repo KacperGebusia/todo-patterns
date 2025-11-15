@@ -6,67 +6,122 @@ import { createMemento } from "../memento/Memento";
 
 export class CommandBus {
   constructor(store) {
-    this.store = store;       // odniesienie do Singletona (TodoStore)
-    this.undoStack = [];      // historia snapshotów (Memento)
-    this.redoStack = [];
-    this.listeners = new Set(); // subskrybenci zmian (np. App -> setCan)
+    this.store = store;              // odniesienie do Singletona (TodoStore)
+    this.undoStack = [];             // historia snapshotów (Memento)
+    this.redoStack = [];             // stos snapshotów do redo
+    this.listeners = new Set();      // subskrybenci zmian (np. App -> setCanUndo/Redo)
   }
 
-  // === Subskrypcja zmian stanu undo/redo (dla UI) ===
-  onChange(fn) {
-    this.listeners.add(fn);
-    // natychmiastowe powiadomienie o stanie
-    fn({ canUndo: this.canUndo(), canRedo: this.canRedo() });
-    return () => this.listeners.delete(fn);
+  // ===== OBSŁUGA SUBSKRYPCJI UI =====
+
+  onChange(listener) {
+    this.listeners.add(listener);
+    listener(this.createChangePayload());
+    return () => this.listeners.delete(listener);
   }
 
-  #emit() {
-    const payload = { canUndo: this.canUndo(), canRedo: this.canRedo() };
-    for (const fn of this.listeners) fn(payload);
+  createChangePayload() {
+    return {
+      canUndo: this.canUndo(),
+      canRedo: this.canRedo(),
+    };
   }
 
-  // === Informacje o stanie stosów ===
+  notifyListeners() {
+    const payload = this.createChangePayload();
+    for (const listener of this.listeners) {
+      listener(payload);
+    }
+  }
+
+  // ===== INFORMACJE O STANIE STOSÓW =====
+
   canUndo() {
     return this.undoStack.length > 0;
   }
+
   canRedo() {
     return this.redoStack.length > 0;
   }
 
-  // === Wykonanie komendy ===
-  async execute(cmd) {
-    if (!cmd || typeof cmd.do !== "function") {
+  // ===== OBSŁUGA SNAPSHOTÓW (MEMENTO) =====
+
+  createCurrentMemento() {
+    return createMemento(this.store.state);
+  }
+
+  pushUndoSnapshot(memento) {
+    this.undoStack.push(memento);
+  }
+
+  pushRedoSnapshot(memento) {
+    this.redoStack.push(memento);
+  }
+
+  clearRedoStack() {
+    this.redoStack = [];
+  }
+
+  popUndoSnapshot() {
+    return this.undoStack.pop() || null;
+  }
+
+  popRedoSnapshot() {
+    return this.redoStack.pop() || null;
+  }
+
+  async restoreFromMemento(memento) {
+    if (!memento) return;
+    await this.store.restoreSnapshot(memento);
+  }
+
+  // ===== WYKONANIE KOMENDY =====
+
+  async execute(command) {
+    if (!this.isValidCommand(command)) {
       throw new Error("Nieprawidłowa komenda — brak metody do()");
     }
 
-    // zapisujemy snapshot PRZED wykonaniem komendy
-    this.undoStack.push(createMemento(this.store.state));
-    this.redoStack = [];
+    const beforeMemento = this.createCurrentMemento();
+    this.pushUndoSnapshot(beforeMemento);
+    this.clearRedoStack();
 
-    // wykonaj komendę
-    await cmd.do(this.store);
+    await command.do(this.store);
 
-    // powiadom UI
-    this.#emit();
+    this.notifyListeners();
   }
 
-  // === Cofnięcie (Undo) ===
+  isValidCommand(command) {
+    return Boolean(
+      command && typeof command.do === "function"
+    );
+  }
+
+  // ===== COFNIĘCIE (UNDO) =====
+
   async undo() {
     if (!this.canUndo()) return;
-    const current = createMemento(this.store.state); // zapisz aktualny stan
-    const m = this.undoStack.pop();                  // weź poprzedni snapshot
-    this.redoStack.push(current);                    // zapisz w redo
-    await this.store.restoreSnapshot(m);             // przywróć memento
-    this.#emit();
+
+    const currentMemento = this.createCurrentMemento();
+    const previousMemento = this.popUndoSnapshot();
+
+    this.pushRedoSnapshot(currentMemento);
+    await this.restoreFromMemento(previousMemento);
+
+    this.notifyListeners();
   }
 
-  // === Ponowienie (Redo) ===
+  // ===== PONOWIENIE (REDO) =====
+
   async redo() {
     if (!this.canRedo()) return;
-    const current = createMemento(this.store.state);
-    const m = this.redoStack.pop();
-    this.undoStack.push(current);
-    await this.store.restoreSnapshot(m);
-    this.#emit();
+
+    const currentMemento = this.createCurrentMemento();
+    const nextMemento = this.popRedoSnapshot();
+
+    this.pushUndoSnapshot(currentMemento);
+    await this.restoreFromMemento(nextMemento);
+
+    this.notifyListeners();
   }
 }

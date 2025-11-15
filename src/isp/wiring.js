@@ -3,76 +3,159 @@
 // oraz adaptery "grubych" interfejsów dla zachowania kompatybilności.
 
 import {
-  StoreTaskReader, StoreTaskWriter, StoreTaskCreator, StoreTaskUpdater,
-  StoreTaskRemover, StoreTaskMover, StoreTaskBulkCloser,
-  ExportCSV, ExportJSON, ExportICS,
-  ToastNotifier, AlertNotifier, ConfirmDialog, ConsoleLogger
+  StoreTaskReader,
+  StoreTaskWriter,
+  StoreTaskCreator,
+  StoreTaskUpdater,
+  StoreTaskRemover,
+  StoreTaskMover,
+  StoreTaskBulkCloser,
+  ExportCSV,
+  ExportJSON,
+  ExportICS,
+  ToastNotifier,
+  AlertNotifier,
+  ConfirmDialog,
+  ConsoleLogger,
 } from "./impls";
 
 import {
   TaskServiceAdapter,
   ExportServiceAdapter,
-  NotifyServiceAdapter
+  NotifyServiceAdapter,
 } from "./adapter-fat";
 
-// Tworzymy wyspecjalizowane implementacje repozytorium zadań.
-const reader  = new StoreTaskReader();
-const writer  = new StoreTaskWriter();
-const creator = new StoreTaskCreator();
-const updater = new StoreTaskUpdater();
-const remover = new StoreTaskRemover();
-const mover   = new StoreTaskMover();
-const closer  = new StoreTaskBulkCloser();
+// ===== INSTANCJE WĄSKICH IMPLEMENTACJI =====
 
-// Tworzymy wyspecjalizowane eksporterzy.
-const csv = new ExportCSV();
-const json = new ExportJSON();
-const ics = new ExportICS();
+// Repozytorium zadań
+const taskReader = new StoreTaskReader();
+const taskWriter = new StoreTaskWriter();
+const taskCreator = new StoreTaskCreator();
+const taskUpdater = new StoreTaskUpdater();
+const taskRemover = new StoreTaskRemover();
+const taskMover = new StoreTaskMover();
+const taskBulkCloser = new StoreTaskBulkCloser();
 
-// Tworzymy wyspecjalizowane notyfikatory.
-const toast = new ToastNotifier();
-const alertN = new AlertNotifier();
-const confirmN = new ConfirmDialog();
-const logN = new ConsoleLogger();
+// Eksporterzy
+const csvExporter = new ExportCSV();
+const jsonExporter = new ExportJSON();
+const icsExporter = new ExportICS();
+
+// Notyfikacje
+const toastNotifier = new ToastNotifier();
+const alertNotifier = new AlertNotifier();
+const confirmDialog = new ConfirmDialog();
+const consoleLogger = new ConsoleLogger();
 
 /**
- * Adaptery „grubych” interfejsów – przydatne, gdy stary kod oczekuje ITaskServiceFat / IExportServiceFat / INotifyServiceFat.
- * Nowy kod może korzystać wyłącznie z wąskich interfejsów, ale tu pokazujemy, że można je złożyć w "grubą" wersję.
+ * Adaptery „grubych” interfejsów – przydatne, gdy stary kod oczekuje
+ * ITaskServiceFat / IExportServiceFat / INotifyServiceFat.
  */
-export const taskServiceFat = new TaskServiceAdapter(reader, writer, creator, updater, remover, mover, closer);
-export const exportServiceFat = new ExportServiceAdapter(csv, json, ics);
-export const notifyServiceFat = new NotifyServiceAdapter(toast, alertN, confirmN, logN);
+export const taskServiceFat = new TaskServiceAdapter(
+  taskReader,
+  taskWriter,
+  taskCreator,
+  taskUpdater,
+  taskRemover,
+  taskMover,
+  taskBulkCloser
+);
+
+export const exportServiceFat = new ExportServiceAdapter(
+  csvExporter,
+  jsonExporter,
+  icsExporter
+);
+
+export const notifyServiceFat = new NotifyServiceAdapter(
+  toastNotifier,
+  alertNotifier,
+  confirmDialog,
+  consoleLogger
+);
+
+// ===== MAŁE FUNKCJE POMOCNICZE (SRP) =====
+
+async function readAllTasks() {
+  return taskReader.list();
+}
+
+async function saveAllTasks(tasks) {
+  return taskWriter.save(tasks);
+}
+
+function markDoneInStatus(tasks, status) {
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  return safeTasks.map((task) =>
+    task.status === status
+      ? { ...task, status: "done", completed: true }
+      : task
+  );
+}
+
+function filterDoneTasks(tasks) {
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  return safeTasks.filter(
+    (task) => task.status === "done" || task.completed
+  );
+}
+
+function getExporterByFormat(format) {
+  const exporters = {
+    csv: () => csvExporter.exportCSV,
+    json: () => jsonExporter.exportJSON,
+    ics: () => icsExporter.exportICS,
+  };
+
+  const exporterFactory = exporters[format] || exporters.csv;
+  return exporterFactory();
+}
+
+function notifyBulkClose(status, closedCount) {
+  toastNotifier.toast(
+    "success",
+    `Zamknięto ${closedCount} kart w kolumnie ${status}.`
+  );
+}
+
+function notifyExport(format, exportedCount) {
+  toastNotifier.toast(
+    "info",
+    `Wyeksportowano ${exportedCount} zakończonych kart (${format}).`
+  );
+}
+
+// ===== PRZYPADKI UŻYCIA (ORKIESTRACJA) =====
 
 /**
  * Przypadek użycia: zamknij wszystkie zadania w danym statusie (ISP).
- * Używa tylko wąskich interfejsów reader + writer + toast (wysokopoziomowa funkcja).
+ * Używa tylko wąskich interfejsów: reader + writer + toast.
  */
-export async function closeAllInStatus(status){
-  const tasks = await reader.list();
-  const next = tasks.map(t =>
-    t.status === status ? ({ ...t, status: "done", completed: true }) : t
-  );
-  await writer.save(next);
-  toast.toast("success", `Zamknięto wszystkie karty w kolumnie ${status}.`);
+export async function closeAllInStatus(status) {
+  const tasks = await readAllTasks();
+  const closedTasks = markDoneInStatus(tasks, status);
+  await saveAllTasks(closedTasks);
+
+  const closedCount = closedTasks.filter(
+    (task) => task.status === "done" || task.completed
+  ).length;
+
+  notifyBulkClose(status, closedCount);
 }
 
 /**
  * Przypadek użycia: eksport wszystkich ukończonych zadań w wybranym formacie.
- * Używa readera + odpowiedniego eksporter + toast.
+ * Używa: reader + eksporter + toast.
+ *
+ * @param {'csv'|'json'|'ics'} format
  */
-export async function exportDoneAs(format /* 'csv'|'json'|'ics' */){
-  const tasks = await reader.list();
-  const done = tasks.filter(t => t.status === "done" || t.completed);
+export async function exportDoneAs(format) {
+  const tasks = await readAllTasks();
+  const doneTasks = filterDoneTasks(tasks);
 
-  // Mapa formatu na funkcję eksportującą.
-  const map = {
-    csv: () => csv.exportCSV(done),
-    json: () => json.exportJSON(done),
-    ics: () => ics.exportICS(done),
-  };
+  const exporter = getExporterByFormat(format);
+  const file = exporter(doneTasks);
 
-  const exporter = map[format] || map.csv;
-  const f = exporter();
-  toast.toast("info", `Wyeksportowano ${done.length} kart (${format})`);
-  return f;
+  notifyExport(format, doneTasks.length);
+  return file;
 }

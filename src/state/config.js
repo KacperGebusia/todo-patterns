@@ -1,6 +1,7 @@
 // src/state/config.js
 // [PATTERN: State] — konfiguracja FSM dla cyklu życia karty.
 
+// Lista wszystkich stanów maszyny stanów zadania
 export const STATES = /** @type {const} */ ([
   "todo",
   "in_progress",
@@ -8,6 +9,7 @@ export const STATES = /** @type {const} */ ([
   "done",
 ]);
 
+// Mapowanie stanu na etykietę wyświetlaną w UI
 export const STATE_LABEL = {
   todo: "To Do",
   in_progress: "In Progress",
@@ -15,7 +17,7 @@ export const STATE_LABEL = {
   done: "Done",
 };
 
-// Dozwolone przejścia sterowane ZDARZENIAMI (event-driven)
+// Dozwolone przejścia sterowane zdarzeniami (event-driven FSM)
 export const TRANSITIONS = {
   todo: {
     START: "in_progress",
@@ -36,7 +38,7 @@ export const TRANSITIONS = {
   },
 };
 
-// (opcjonalnie) proste kolory odznak
+// Proste klasy odznak (Tailwind) dla stanów
 export const STATE_BADGE = {
   todo: "bg-slate-100 text-slate-700",
   in_progress: "bg-blue-100 text-blue-700",

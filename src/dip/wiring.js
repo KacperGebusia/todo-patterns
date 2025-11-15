@@ -1,15 +1,41 @@
+// dip/wiring.js
+
 import { todoStore } from "../store";
-import { LocalStateTaskRepository, ToastNotifier, CsvExporter } from "./impls";
+import {
+  LocalStateTaskRepository,
+  ToastNotifier,
+  CsvExporter,
+} from "./impls";
 import { TaskUseCases } from "./usecases";
 
-const repo = new LocalStateTaskRepository({
-  getState: () => todoStore.state,
-  setState: async (tasks) => { await todoStore.restoreSnapshot({ data: tasks }); }
-});
-const notifier = new ToastNotifier();
-const exporter = new CsvExporter();
+function createLocalStateRepository() {
+  return new LocalStateTaskRepository({
+    getState: () => todoStore.state,
+    setState: async (tasks) => {
+      await todoStore.restoreSnapshot({ data: tasks });
+    },
+  });
+}
+
+function createNotifier() {
+  return new ToastNotifier();
+}
+
+function createExporter() {
+  return new CsvExporter();
+}
+
+function createUseCases(repository, notifier, exporter) {
+  return new TaskUseCases(repository, notifier, exporter);
+}
+
+const repository = createLocalStateRepository();
+const notifier = createNotifier();
+const exporter = createExporter();
 
 export const dipContainer = {
-  repo, notifier, exporter,
-  usecases: new TaskUseCases(repo, notifier, exporter),
+  repo: repository,
+  notifier,
+  exporter,
+  usecases: createUseCases(repository, notifier, exporter),
 };

@@ -4,9 +4,20 @@
 
 import { ITaskServiceFat, IExportServiceFat, INotifyServiceFat } from "./fat";
 import {
-  ITaskReader, ITaskWriter, ITaskCreator, ITaskUpdater, ITaskRemover, ITaskMover, ITaskBulkCloser,
-  IExportCSV, IExportJSON, IExportICS,
-  IToast, IAlert, IConfirm, ILog
+  ITaskReader,
+  ITaskWriter,
+  ITaskCreator,
+  ITaskUpdater,
+  ITaskRemover,
+  ITaskMover,
+  ITaskBulkCloser,
+  IExportCSV,
+  IExportJSON,
+  IExportICS,
+  IToast,
+  IAlert,
+  IConfirm,
+  ILog,
 } from "./segregated";
 
 /**
@@ -15,32 +26,60 @@ import {
  */
 export class TaskServiceAdapter extends ITaskServiceFat {
   /**
-   * @param {ITaskReader} r
-   * @param {ITaskWriter} w
-   * @param {ITaskCreator} c
-   * @param {ITaskUpdater} u
-   * @param {ITaskRemover} rm
-   * @param {ITaskMover} m
-   * @param {ITaskBulkCloser} bc
+   * @param {ITaskReader} taskReader
+   * @param {ITaskWriter} taskWriter
+   * @param {ITaskCreator} taskCreator
+   * @param {ITaskUpdater} taskUpdater
+   * @param {ITaskRemover} taskRemover
+   * @param {ITaskMover} taskMover
+   * @param {ITaskBulkCloser} taskBulkCloser
    */
-  constructor(r, w, c, u, rm, m, bc){
+  constructor(
+    taskReader,
+    taskWriter,
+    taskCreator,
+    taskUpdater,
+    taskRemover,
+    taskMover,
+    taskBulkCloser
+  ) {
     super();
-    this.r = r;
-    this.w = w;
-    this.c = c;
-    this.u = u;
-    this.rm = rm;
-    this.m = m;
-    this.bc = bc;
+    this.taskReader = taskReader;
+    this.taskWriter = taskWriter;
+    this.taskCreator = taskCreator;
+    this.taskUpdater = taskUpdater;
+    this.taskRemover = taskRemover;
+    this.taskMover = taskMover;
+    this.taskBulkCloser = taskBulkCloser;
   }
 
-  async list(){ return this.r.list(); }
-  async save(tasks){ return this.w.save(tasks); }
-  async create(task){ return this.c.create(task); }
-  async update(id, patch){ return this.u.update(id, patch); }
-  async remove(id){ return this.rm.remove(id); }
-  async move(id, toStatus, toIndex){ return this.m.move(id, toStatus, toIndex); }
-  async bulkClose(status){ return this.bc.bulkClose(status); }
+  async list() {
+    return this.taskReader.list();
+  }
+
+  async save(tasks) {
+    return this.taskWriter.save(tasks);
+  }
+
+  async create(task) {
+    return this.taskCreator.create(task);
+  }
+
+  async update(id, patch) {
+    return this.taskUpdater.update(id, patch);
+  }
+
+  async remove(id) {
+    return this.taskRemover.remove(id);
+  }
+
+  async move(id, toStatus, toIndex) {
+    return this.taskMover.move(id, toStatus, toIndex);
+  }
+
+  async bulkClose(status) {
+    return this.taskBulkCloser.bulkClose(status);
+  }
 }
 
 /**
@@ -48,20 +87,28 @@ export class TaskServiceAdapter extends ITaskServiceFat {
  */
 export class ExportServiceAdapter extends IExportServiceFat {
   /**
-   * @param {IExportCSV} c
-   * @param {IExportJSON} j
-   * @param {IExportICS} i
+   * @param {IExportCSV} csvExporter
+   * @param {IExportJSON} jsonExporter
+   * @param {IExportICS} icsExporter
    */
-  constructor(c, j, i){
+  constructor(csvExporter, jsonExporter, icsExporter) {
     super();
-    this.c = c;
-    this.j = j;
-    this.i = i;
+    this.csvExporter = csvExporter;
+    this.jsonExporter = jsonExporter;
+    this.icsExporter = icsExporter;
   }
 
-  exportCSV(tasks){ return this.c.exportCSV(tasks); }
-  exportJSON(tasks){ return this.j.exportJSON(tasks); }
-  exportICS(tasks){ return this.i.exportICS(tasks); }
+  exportCSV(tasks) {
+    return this.csvExporter.exportCSV(tasks);
+  }
+
+  exportJSON(tasks) {
+    return this.jsonExporter.exportJSON(tasks);
+  }
+
+  exportICS(tasks) {
+    return this.icsExporter.exportICS(tasks);
+  }
 }
 
 /**
@@ -70,21 +117,32 @@ export class ExportServiceAdapter extends IExportServiceFat {
  */
 export class NotifyServiceAdapter extends INotifyServiceFat {
   /**
-   * @param {IToast} t
-   * @param {IAlert} a
-   * @param {IConfirm} c
-   * @param {ILog} l
+   * @param {IToast} toastNotifier
+   * @param {IAlert} alertNotifier
+   * @param {IConfirm} confirmDialog
+   * @param {ILog} logger
    */
-  constructor(t, a, c, l){
+  constructor(toastNotifier, alertNotifier, confirmDialog, logger) {
     super();
-    this.t = t;
-    this.a = a;
-    this.c = c;
-    this.l = l;
+    this.toastNotifier = toastNotifier;
+    this.alertNotifier = alertNotifier;
+    this.confirmDialog = confirmDialog;
+    this.logger = logger;
   }
 
-  toast(type, msg){ this.t.toast(type, msg); }
-  alert(msg){ this.a.alert(msg); }
-  confirm(q){ return this.c.confirm(q); }
-  log(msg){ this.l.log(msg); }
+  toast(type, message) {
+    this.toastNotifier.toast(type, message);
+  }
+
+  alert(message) {
+    this.alertNotifier.alert(message);
+  }
+
+  confirm(question) {
+    return this.confirmDialog.confirm(question);
+  }
+
+  log(message) {
+    this.logger.log(message);
+  }
 }

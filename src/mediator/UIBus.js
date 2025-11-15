@@ -1,30 +1,48 @@
 // src/mediator/UIBus.js
 // [PATTERN: Mediator] — centralny bus UI, koordynuje akcje między panelami
-// Zdarzenia (propozycja):
-// - OPEN_EDIT   : { task }
-// - CLOSE_EDIT  : {}
-// - SET_QUERY   : { query }
+// Zdarzenia (przykłady):
+// - OPEN_EDIT      : { task }
+// - CLOSE_EDIT     : {}
+// - SET_QUERY      : { query }
 // - FOCUS_COMPOSER : {}
-// - TOAST       : { type: 'success'|'error'|'info', message: string }
+// - TOAST          : { type: 'success'|'error'|'info', message: string }
 
 class UIBus {
-  constructor(){
-    this.listeners = new Map(); // event -> Set<fn>
+  constructor() {
+    // Map<string, Set<Function>>
+    this.listenersByEvent = new Map();
   }
-  on(event, fn){
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event).add(fn);
-    return () => this.off(event, fn);
+
+  getListenerSet(eventName) {
+    if (!this.listenersByEvent.has(eventName)) {
+      this.listenersByEvent.set(eventName, new Set());
+    }
+    return this.listenersByEvent.get(eventName);
   }
-  off(event, fn){
-    const set = this.listeners.get(event);
-    if (set) set.delete(fn);
+
+  on(eventName, listener) {
+    const listenerSet = this.getListenerSet(eventName);
+    listenerSet.add(listener);
+
+    return () => this.off(eventName, listener);
   }
-  emit(event, payload){
-    const set = this.listeners.get(event);
-    if (!set) return;
-    for (const fn of set) {
-      try { fn(payload); } catch (e) { console.error("[UIBus] handler error", e); }
+
+  off(eventName, listener) {
+    const listenerSet = this.listenersByEvent.get(eventName);
+    if (!listenerSet) return;
+    listenerSet.delete(listener);
+  }
+
+  emit(eventName, payload) {
+    const listenerSet = this.listenersByEvent.get(eventName);
+    if (!listenerSet) return;
+
+    for (const listener of listenerSet) {
+      try {
+        listener(payload);
+      } catch (error) {
+        console.error("[UIBus] handler error", error);
+      }
     }
   }
 }
