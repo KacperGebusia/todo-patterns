@@ -3,13 +3,7 @@
 // Command • Memento • Interpreter • Iterator • State • Strategy • Mediator • DIP • ISP
 
 import { useEffect, useState } from "react";
-import {
-  Database,
-  RotateCcw,
-  RotateCw,
-  SortAsc,
-} from "lucide-react";
-
+import { Database, RotateCcw, RotateCw, SortAsc } from "lucide-react";
 import { useStore } from "../store/StoreContext";
 import { commandBus } from "../command";
 import Board from "../kanban/Board";
@@ -17,61 +11,28 @@ import { SORT_STRATEGIES } from "../strategy/sort";
 import { SAVE_STRATEGY_OPTIONS } from "../strategy/save";
 import { uiBus } from "../mediator/UIBus";
 
-// DIP
+// DIP: wstrzykiwanie repozytorium, notyfikatora i eksportera
 import { dipContainer } from "../dip/wiring";
-// ISP
-import {
-  closeAllInStatus,
-  exportDoneAs,
-} from "../isp/wiring";
+// ISP: wąskie interfejsy i segregacja
+import { closeAllInStatus, exportDoneAs } from "../isp/wiring";
 
-// =====================
-// Helpers
-// =====================
-
-function downloadFile(fileDescriptor) {
-  if (!fileDescriptor) return;
-  const blob = new Blob(
-    [fileDescriptor.data],
-    { type: fileDescriptor.mime }
-  );
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = fileDescriptor.filename;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-function getSaveStrategyLabel(key) {
-  const option = SAVE_STRATEGY_OPTIONS.find(
-    (strategy) => strategy.key === key
-  );
-  return option?.label || key;
-}
-
-// =====================
-// Toasts (Mediator)
-// =====================
+// ===== magic number → stała =====
+const TOAST_LIFETIME_MS = 2600;
 
 function ToastHost() {
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
-    function handleToast({ type = "info", message }) {
+    const off = uiBus.on("TOAST", ({ type = "info", message }) => {
       const id = crypto.randomUUID();
-      setToasts((current) => [
-        ...current,
-        { id, type, message },
-      ]);
-      setTimeout(() => {
-        setToasts((current) =>
-          current.filter((toast) => toast.id !== id)
-        );
-      }, 2600);
-    }
+      setToasts((current) => [...current, { id, type, message }]);
 
-    const unsubscribe = uiBus.on("TOAST", handleToast);
-    return unsubscribe;
+      setTimeout(() => {
+        setToasts((current) => current.filter((toast) => toast.id !== id));
+      }, TOAST_LIFETIME_MS);
+    });
+
+    return off;
   }, []);
 
   return (
@@ -98,313 +59,197 @@ function ToastHost() {
   );
 }
 
-// =====================
-// Toolbar sub-komponenty
-// =====================
+export default function App() {
+  const { backend, lastError, ready, todoStore } = useStore();
+  const [view] = useState("board");
+  const [can, setCan] = useState({ canUndo: false, canRedo: false });
+  const [sortKey, setSortKey] = useState("kanbanOrder");
+  const [saveKey, setSaveKey] = useState("immediate");
 
-function BackendSelector({ backend, ready, onChange }) {
-  return (
-    <div className="inline-flex items-center gap-2 text-sm text-slate-600">
-      <Database size={16} />
-      <span>Backend:</span>
-      <select
-        className="border rounded-lg px-2 py-1 text-sm"
-        value={backend}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="localStorage">localStorage</option>
-        <option value="memory">memory</option>
-        <option value="mockApi">mockApi</option>
-      </select>
-      {!ready && (
-        <span className="text-slate-400">
-          (ładowanie...)
-        </span>
-      )}
-    </div>
-  );
-}
-
-function SortSelector({ sortKey, onChange }) {
-  return (
-    <div className="inline-flex items-center gap-2 text-sm text-slate-600">
-      <SortAsc size={16} />
-      <span>Sortuj:</span>
-      <select
-        className="border rounded-lg px-2 py-1 text-sm"
-        value={sortKey}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {SORT_STRATEGIES.map((strategy) => (
-          <option
-            key={strategy.key}
-            value={strategy.key}
-          >
-            {strategy.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function SaveStrategySelector({
-  saveKey,
-  onChange,
-}) {
-  return (
-    <div className="inline-flex items-center gap-2 text-sm text-slate-600">
-      <span>Zapis:</span>
-      <select
-        className="border rounded-lg px-2 py-1 text-sm"
-        value={saveKey}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
-      >
-        {SAVE_STRATEGY_OPTIONS.map((strategy) => (
-          <option
-            key={strategy.key}
-            value={strategy.key}
-          >
-            {strategy.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function DipActions({
-  onCloseInProgress,
-  onExportDoneCsv,
-}) {
-  return (
-    <div className="inline-flex items-center gap-2 text-sm text-slate-600">
-      <button
-        onClick={onCloseInProgress}
-        className="px-2 py-1 rounded-lg border bg-white text-sm"
-        title="Zamknij wszystkie karty w kolumnie In Progress"
-      >
-        Zamknij In Progress
-      </button>
-      <button
-        onClick={onExportDoneCsv}
-        className="px-2 py-1 rounded-lg border bg-white text-sm"
-        title="Eksportuj ukończone karty do CSV"
-      >
-        Eksport DONE (CSV)
-      </button>
-    </div>
-  );
-}
-
-function IspActions({
-  onCloseBlocked,
-  onExportDoneJson,
-}) {
-  return (
-    <div className="inline-flex items-center gap-2 text-sm text-slate-600">
-      <button
-        onClick={onCloseBlocked}
-        className="px-2 py-1 rounded-lg border bg-white text-sm"
-        title="Zamknij wszystkie karty w kolumnie Blocked (ISP)"
-      >
-        Zamknij Blocked (ISP)
-      </button>
-      <button
-        onClick={onExportDoneJson}
-        className="px-2 py-1 rounded-lg border bg-white text-sm"
-        title="Eksportuj ukończone karty w JSON (ISP)"
-      >
-        Eksport DONE JSON (ISP)
-      </button>
-    </div>
-  );
-}
-
-function UndoRedoControls({ canUndo, canRedo }) {
-  return (
-    <div className="ml-auto flex items-center gap-2">
-      <button
-        disabled={!canUndo}
-        onClick={() => commandBus.undo()}
-        className="px-2 py-1 rounded-lg border bg-white disabled:opacity-50 inline-flex items-center gap-1 text-sm"
-        title="Cofnij (Ctrl/Cmd+Z)"
-      >
-        <RotateCcw size={16} /> Cofnij
-      </button>
-      <button
-        disabled={!canRedo}
-        onClick={() => commandBus.redo()}
-        className="px-2 py-1 rounded-lg border bg-white disabled:opacity-50 inline-flex items-center gap-1 text-sm"
-        title="Ponów (Ctrl/Cmd+Y)"
-      >
-        <RotateCw size={16} /> Ponów
-      </button>
-    </div>
-  );
-}
-
-function ErrorBanner({ lastError }) {
-  if (!lastError) return null;
-
-  const message =
-    lastError?.message || String(lastError);
-
-  return (
-    <div className="bg-red-50 text-red-700 text-xs px-2 py-1 rounded border border-red-200">
-      Błąd persystencji: {message}
-    </div>
-  );
-}
-
-// =====================
-// Hook: skróty klawiaturowe
-// =====================
-
-function useUndoRedoShortcuts() {
   useEffect(() => {
-    function handleKeyDown(event) {
-      const hasModifier =
-        event.ctrlKey || event.metaKey;
+    const off = commandBus.onChange(setCan);
+
+    const onKey = (event) => {
+      const ctrl = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
 
-      if (!hasModifier) return;
-
-      if (key === "z") {
+      if (ctrl && key === "z") {
         event.preventDefault();
         commandBus.undo();
       }
-
-      if (key === "y") {
+      if (ctrl && key === "y") {
         event.preventDefault();
         commandBus.redo();
       }
-    }
+    };
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown
-    );
-    return () =>
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown
-      );
-  }, []);
-}
-
-// =====================
-// Główny komponent App
-// =====================
-
-export default function App() {
-  const { backend, lastError, ready, todoStore } =
-    useStore();
-
-  const [historyState, setHistoryState] = useState({
-    canUndo: false,
-    canRedo: false,
-  });
-
-  const [sortKey, setSortKey] =
-    useState("kanbanOrder");
-  const [saveKey, setSaveKey] =
-    useState("immediate");
-
-  const [view] = useState("board");
-
-  useUndoRedoShortcuts();
-
-  useEffect(() => {
-    const unsubscribe =
-      commandBus.onChange(setHistoryState);
-    return unsubscribe;
+    window.addEventListener("keydown", onKey);
+    return () => {
+      off();
+      window.removeEventListener("keydown", onKey);
+    };
   }, []);
 
-  async function handleSaveStrategyChange(key) {
-    setSaveKey(key);
-    await todoStore.setSaveStrategy(key);
+  async function handleSaveStrategyChange(value) {
+    setSaveKey(value);
+    await todoStore.setSaveStrategy(value);
 
-    const label = getSaveStrategyLabel(key);
+    const label =
+      SAVE_STRATEGY_OPTIONS.find((option) => option.key === value)?.label ||
+      value;
+
     uiBus.emit("TOAST", {
       type: "info",
       message: `Zapis: ${label}`,
     });
   }
 
-  // ===== DIP actions =====
-
-  async function handleCloseInProgress() {
-    await dipContainer.usecases.completeAllInStatus(
-      "in_progress"
-    );
+  // DIP actions
+  async function closeInProgress() {
+    await dipContainer.usecases.completeAllInStatus("in_progress");
   }
 
-  async function handleExportDoneCsv() {
-    const file =
-      await dipContainer.usecases.exportDone();
-    downloadFile(file);
+  async function exportDoneCsv() {
+    const file = await dipContainer.usecases.exportDone();
+    const blob = new Blob([file.data], { type: file.mime });
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = file.filename;
+    anchor.click();
+    URL.revokeObjectURL(anchor.href);
   }
 
-  // ===== ISP actions =====
-
-  async function handleCloseBlockedIsp() {
+  // ISP actions
+  async function closeBlockedIsp() {
     await closeAllInStatus("blocked");
   }
 
-  async function handleExportDoneJsonIsp() {
+  async function exportDoneJsonIsp() {
     const file = await exportDoneAs("json");
-    downloadFile(file);
+    const blob = new Blob([file.data], { type: file.mime });
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = file.filename;
+    anchor.click();
+    URL.revokeObjectURL(anchor.href);
   }
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b bg-white">
-        <BackendSelector
-          backend={backend}
-          ready={ready}
-          onChange={(value) =>
-            todoStore.setBackend(value)
-          }
-        />
+        {/* Backend (Bridge) */}
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <Database size={16} />
+          <span>Backend:</span>
+          <select
+            className="border rounded-lg px-2 py-1 text-sm"
+            value={backend}
+            onChange={(event) => todoStore.setBackend(event.target.value)}
+          >
+            <option value="localStorage">localStorage</option>
+            <option value="memory">memory</option>
+            <option value="mockApi">mockApi</option>
+          </select>
+          {!ready && (
+            <span className="text-slate-400">(ładowanie...)</span>
+          )}
+        </div>
 
-        <SortSelector
-          sortKey={sortKey}
-          onChange={setSortKey}
-        />
+        {/* Sort (Strategy) */}
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <SortAsc size={16} />
+          <span>Sortuj:</span>
+          <select
+            className="border rounded-lg px-2 py-1 text-sm"
+            value={sortKey}
+            onChange={(event) => setSortKey(event.target.value)}
+          >
+            {SORT_STRATEGIES.map((strategy) => (
+              <option key={strategy.key} value={strategy.key}>
+                {strategy.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <SaveStrategySelector
-          saveKey={saveKey}
-          onChange={handleSaveStrategyChange}
-        />
+        {/* Save Strategy */}
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <span>Zapis:</span>
+          <select
+            className="border rounded-lg px-2 py-1 text-sm"
+            value={saveKey}
+            onChange={(event) => handleSaveStrategyChange(event.target.value)}
+          >
+            {SAVE_STRATEGY_OPTIONS.map((strategy) => (
+              <option key={strategy.key} value={strategy.key}>
+                {strategy.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <DipActions
-          onCloseInProgress={
-            handleCloseInProgress
-          }
-          onExportDoneCsv={
-            handleExportDoneCsv
-          }
-        />
+        {/* DIP buttons */}
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <button
+            onClick={closeInProgress}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Zamknij wszystkie karty w kolumnie In Progress"
+          >
+            Zamknij In Progress
+          </button>
+          <button
+            onClick={exportDoneCsv}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Eksportuj ukończone karty do CSV"
+          >
+            Eksport DONE (CSV)
+          </button>
+        </div>
 
-        <IspActions
-          onCloseBlocked={
-            handleCloseBlockedIsp
-          }
-          onExportDoneJson={
-            handleExportDoneJsonIsp
-          }
-        />
+        {/* ISP buttons */}
+        <div className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <button
+            onClick={closeBlockedIsp}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Zamknij wszystkie karty w kolumnie Blocked (ISP)"
+          >
+            Zamknij Blocked (ISP)
+          </button>
+          <button
+            onClick={exportDoneJsonIsp}
+            className="px-2 py-1 rounded-lg border bg-white text-sm"
+            title="Eksportuj ukończone karty w JSON (ISP)"
+          >
+            Eksport DONE JSON (ISP)
+          </button>
+        </div>
 
-        <UndoRedoControls
-          canUndo={historyState.canUndo}
-          canRedo={historyState.canRedo}
-        />
+        {/* Undo / Redo */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            disabled={!can.canUndo}
+            onClick={() => commandBus.undo()}
+            className="px-2 py-1 rounded-lg border bg-white disabled:opacity-50 inline-flex items-center gap-1 text-sm"
+            title="Cofnij (Ctrl/Cmd+Z)"
+          >
+            <RotateCcw size={16} /> Cofnij
+          </button>
+          <button
+            disabled={!can.canRedo}
+            onClick={() => commandBus.redo()}
+            className="px-2 py-1 rounded-lg border bg-white disabled:opacity-50 inline-flex items-center gap-1 text-sm"
+            title="Ponów (Ctrl/Cmd+Y)"
+          >
+            <RotateCw size={16} /> Ponów
+          </button>
+        </div>
 
-        <ErrorBanner lastError={lastError} />
+        {lastError && (
+          <div className="bg-red-50 text-red-700 text-xs px-2 py-1 rounded border border-red-200">
+            Błąd persystencji: {String(lastError.message || lastError)}
+          </div>
+        )}
       </div>
 
       {/* Main */}
@@ -413,15 +258,12 @@ export default function App() {
           Kanban – Wzorce projektowe
         </h1>
         <p className="text-slate-500">
-          Factory • Singleton • Builder • Prototype •
-          Facade • Decorator • Bridge • Interpreter •
-          Iterator • State • Command • Memento •
+          Factory • Singleton • Builder • Prototype • Facade • Decorator •
+          Bridge • Interpreter • Iterator • State • Command • Memento •
           Strategy • Mediator • DIP • ISP
         </p>
         <div className="mt-6">
-          {view === "board" && (
-            <Board sortKey={sortKey} />
-          )}
+          {view === "board" && <Board sortKey={sortKey} />}
         </div>
       </main>
 

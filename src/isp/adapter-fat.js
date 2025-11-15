@@ -1,6 +1,5 @@
 // src/isp/adapter-fat.js
 // Adaptery, które budują "grube" interfejsy z fat.js na podstawie wąskich interfejsów z segregated.js.
-// Pokazuje to, że można zachować kompatybilność ze starym API, a nowy kod korzysta już z małych kontraktów.
 
 import { ITaskServiceFat, IExportServiceFat, INotifyServiceFat } from "./fat";
 import {
@@ -22,93 +21,54 @@ import {
 
 /**
  * Adapter "grubego" serwisu zadań na zestaw małych interfejsów repozytorium.
- * Zamiast jednej klasy implementującej wszystko, składamy go z wyspecjalizowanych obiektów.
+ * Przyjmuje JEDEN obiekt konfiguracyjny zamiast 7 osobnych argumentów.
  */
 export class TaskServiceAdapter extends ITaskServiceFat {
   /**
-   * @param {ITaskReader} taskReader
-   * @param {ITaskWriter} taskWriter
-   * @param {ITaskCreator} taskCreator
-   * @param {ITaskUpdater} taskUpdater
-   * @param {ITaskRemover} taskRemover
-   * @param {ITaskMover} taskMover
-   * @param {ITaskBulkCloser} taskBulkCloser
+   * @param {{ reader: ITaskReader, writer: ITaskWriter, creator: ITaskCreator,
+   *           updater: ITaskUpdater, remover: ITaskRemover,
+   *           mover: ITaskMover, bulkCloser: ITaskBulkCloser }} deps
    */
-  constructor(
-    taskReader,
-    taskWriter,
-    taskCreator,
-    taskUpdater,
-    taskRemover,
-    taskMover,
-    taskBulkCloser
-  ) {
+  constructor(deps) {
     super();
-    this.taskReader = taskReader;
-    this.taskWriter = taskWriter;
-    this.taskCreator = taskCreator;
-    this.taskUpdater = taskUpdater;
-    this.taskRemover = taskRemover;
-    this.taskMover = taskMover;
-    this.taskBulkCloser = taskBulkCloser;
+    this.reader = deps.reader;
+    this.writer = deps.writer;
+    this.creator = deps.creator;
+    this.updater = deps.updater;
+    this.remover = deps.remover;
+    this.mover = deps.mover;
+    this.bulkCloser = deps.bulkCloser;
   }
 
-  async list() {
-    return this.taskReader.list();
-  }
-
-  async save(tasks) {
-    return this.taskWriter.save(tasks);
-  }
-
-  async create(task) {
-    return this.taskCreator.create(task);
-  }
-
-  async update(id, patch) {
-    return this.taskUpdater.update(id, patch);
-  }
-
-  async remove(id) {
-    return this.taskRemover.remove(id);
-  }
-
+  async list()       { return this.reader.list(); }
+  async save(tasks)  { return this.writer.save(tasks); }
+  async create(task) { return this.creator.create(task); }
+  async update(id, patch) { return this.updater.update(id, patch); }
+  async remove(id)         { return this.remover.remove(id); }
   async move(id, toStatus, toIndex) {
-    return this.taskMover.move(id, toStatus, toIndex);
+    return this.mover.move(id, toStatus, toIndex);
   }
-
-  async bulkClose(status) {
-    return this.taskBulkCloser.bulkClose(status);
-  }
+  async bulkClose(status)  { return this.bulkCloser.bulkClose(status); }
 }
 
 /**
  * Adapter "grubego" serwisu eksportu na osobne eksporterzy (CSV, JSON, ICS).
+ * Też przyjmuje jeden obiekt zależności.
  */
 export class ExportServiceAdapter extends IExportServiceFat {
   /**
-   * @param {IExportCSV} csvExporter
-   * @param {IExportJSON} jsonExporter
-   * @param {IExportICS} icsExporter
+   * @param {{ csv: IExportCSV, json: IExportJSON, ics: IExportICS }} deps
    */
-  constructor(csvExporter, jsonExporter, icsExporter) {
+  constructor(deps) {
     super();
-    this.csvExporter = csvExporter;
-    this.jsonExporter = jsonExporter;
-    this.icsExporter = icsExporter;
+    this.csv = deps.csv;
+    this.json = deps.json;
+    this.ics = deps.ics;
   }
 
-  exportCSV(tasks) {
-    return this.csvExporter.exportCSV(tasks);
-  }
-
-  exportJSON(tasks) {
-    return this.jsonExporter.exportJSON(tasks);
-  }
-
-  exportICS(tasks) {
-    return this.icsExporter.exportICS(tasks);
-  }
+  exportCSV(tasks)  { return this.csv.exportCSV(tasks); }
+  exportJSON(tasks) { return this.json.exportJSON(tasks); }
+  exportICS(tasks)  { return this.ics.exportICS(tasks); }
 }
 
 /**
@@ -117,32 +77,18 @@ export class ExportServiceAdapter extends IExportServiceFat {
  */
 export class NotifyServiceAdapter extends INotifyServiceFat {
   /**
-   * @param {IToast} toastNotifier
-   * @param {IAlert} alertNotifier
-   * @param {IConfirm} confirmDialog
-   * @param {ILog} logger
+   * @param {{ toast: IToast, alert: IAlert, confirm: IConfirm, log: ILog }} deps
    */
-  constructor(toastNotifier, alertNotifier, confirmDialog, logger) {
+  constructor(deps) {
     super();
-    this.toastNotifier = toastNotifier;
-    this.alertNotifier = alertNotifier;
-    this.confirmDialog = confirmDialog;
-    this.logger = logger;
+    this.toast = deps.toast;
+    this.alert = deps.alert;
+    this.confirmDialog = deps.confirm;
+    this.logger = deps.log;
   }
 
-  toast(type, message) {
-    this.toastNotifier.toast(type, message);
-  }
-
-  alert(message) {
-    this.alertNotifier.alert(message);
-  }
-
-  confirm(question) {
-    return this.confirmDialog.confirm(question);
-  }
-
-  log(message) {
-    this.logger.log(message);
-  }
+  toast(type, msg)   { this.toast.toast(type, msg); }
+  alert(msg)         { this.alert.alert(msg); }
+  confirm(question)  { return this.confirmDialog.confirm(question); }
+  log(msg)           { this.logger.log(msg); }
 }

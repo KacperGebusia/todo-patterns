@@ -9,6 +9,9 @@ import {
 } from "../bridge/storage";
 import { createSaveStrategy } from "../strategy/save";
 
+const LOCAL_STORAGE_KEY = "factory-method-todos";
+const MOCK_API_DELAY_MS = 250;
+
 class Emitter {
   constructor() {
     this.listeners = new Set();
@@ -19,40 +22,10 @@ class Emitter {
     return () => this.listeners.delete(listener);
   }
 
-  emit(value) {
+  emit(payload) {
     for (const listener of this.listeners) {
-      listener(value);
+      listener(payload);
     }
-  }
-}
-
-// POMOCNICZE FUNKCJE (pojedyncza odpowiedzialność)
-
-function migrateLoadedTasks(rawTasks) {
-  const fallbackTasks = Array.isArray(rawTasks) ? rawTasks : [];
-  return fallbackTasks.map((task) => ({
-    ...task,
-    status: task.status || (task.completed ? "done" : "todo"),
-    order: typeof task.order === "number" ? task.order : 0,
-  }));
-}
-
-function cloneTasksForSnapshot(tasks) {
-  if (typeof structuredClone === "function") {
-    return structuredClone(tasks);
-  }
-  return JSON.parse(JSON.stringify(tasks));
-}
-
-function buildBackendInstance(kind) {
-  switch (kind) {
-    case "memory":
-      return new MemoryBackend([]);
-    case "mockApi":
-      return new MockApiBackend({ delay: 250 });
-    case "localStorage":
-    default:
-      return new LocalStorageBackend("factory-method-todos");
   }
 }
 
@@ -60,10 +33,10 @@ class TodoStore {
   static #instance;
 
   static getInstance() {
-    if (!TodoStore.#instance) {
-      TodoStore.#instance = new TodoStore();
+    if (!this.#instance) {
+      this.#instance = new TodoStore();
     }
-    return TodoStore.#instance;
+    return this.#instance;
   }
 
   constructor() {
@@ -77,9 +50,9 @@ class TodoStore {
     this.settingsEmitter = new Emitter(); // zmiany strategii zapisu
 
     this.bridge = new StorageBridge(
-      new LocalStorageBackend("factory-method-todos")
+      new LocalStorageBackend(LOCAL_STORAGE_KEY)
     );
-    this.saveStrategy = createSaveStrategy("immediate");
+    this.saveStrategy = createSaveStrategy("immediate"); // [Strategy(save)] domyślnie natychmiast
 
     this.state = [];
     this.ready = false;
@@ -87,238 +60,347 @@ class TodoStore {
     this.reload();
   }
 
-  // ===== PERSYSTENCJA STANU =====
+  // =====================
+  // ŁADOWANIE STANU
+  // =====================
 
   async reload() {
     try {
-      const { ok, data, error } = await this.bridge.load();
-      const migratedTasks = migrateLoadedTasks(ok ? data : []);
-      this.state = migratedTasks;
-      if (!ok) {
-        this.errorEmitter.emit(error);
-      }
+      const result = await this.bridge.load();
+      assertPersistenceOk(result, "load");
+
+      const rawData = Array.isArray(result.data)
+        ? result.data
+        : [];
+
+      const migrated = rawData.map((task) => ({
+        ...task,
+        status:
+          task.status ||
+          (task.completed ? "done" : "todo"),
+        order:
+          typeof task.order === "number"
+            ? task.order
+            : 0,
+      }));
+
+      this.state = migrated;
       this.ready = true;
       this.emitter.emit(this.state);
-    } catch (loadError) {
-      this.errorEmitter.emit(loadError);
+    } catch (error) {
+      this.errorEmitter.emit(error);
+      this.ready = true;
+      this.emitter.emit(this.state);
     }
   }
 
-  async #persistCurrentState() {
-    const result = await this.saveStrategy.save(this.state, this.bridge);
-    if (!result?.ok) {
-      this.errorEmitter.emit(result?.error);
+  // =====================
+  // ZAPIS STANU (Strategy + Bridge)
+  // =====================
+
+  async #save() {
+    try {
+      const result = await this.saveStrategy.save(
+        this.state,
+        this.bridge
+      );
+      assertPersistenceOk(result, "save");
+      return true;
+    } catch (error) {
+      this.errorEmitter.emit(error);
+      return false;
     }
-    return Boolean(result?.ok);
   }
 
-  #updateState(taskList) {
-    this.state = Array.isArray(taskList) ? taskList : [];
-  }
-
-  #notifyStateChanged() {
+  async #set(nextState) {
+    this.state = nextState;
+    await this.#save();
     this.emitter.emit(this.state);
   }
 
-  async #applyStateChange(taskList) {
-    this.#updateState(taskList);
-    await this.#persistCurrentState();
-    this.#notifyStateChanged();
-  }
-
-  // ===== CRUD =====
+  // =====================
+  // CRUD
+  // =====================
 
   async add(task) {
-    const updatedTasks = [task, ...this.state];
-    await this.#applyStateChange(updatedTasks);
+    const nextState = [task, ...this.state];
+    await this.#set(nextState);
   }
 
-  async remove(taskId) {
-    const updatedTasks = this.state.filter((task) => task.id !== taskId);
-    await this.#applyStateChange(updatedTasks);
+  async remove(id) {
+    const nextState = this.state.filter(
+      (task) => task.id !== id
+    );
+    await this.#set(nextState);
   }
 
-  async toggle(taskId) {
-    const updatedTasks = this.state.map((task) =>
-      task.id === taskId
-        ? { ...task, completed: !task.completed }
+  async toggle(id) {
+    const nextState = this.state.map((task) =>
+      task.id === id
+        ? {
+            ...task,
+            completed: !task.completed,
+          }
         : task
     );
-    await this.#applyStateChange(updatedTasks);
+    await this.#set(nextState);
   }
 
-  async update(taskId, patchOrWhole) {
-    const updatedTasks = this.state.map((task) => {
-      if (task.id !== taskId) {
+  async update(id, patchOrWhole) {
+    const nextState = this.state.map((task) => {
+      if (task.id !== id) {
         return task;
       }
+
       if (patchOrWhole && patchOrWhole.id) {
+        // pełny obiekt (replace)
         return { ...patchOrWhole };
       }
+
       const patch =
         typeof patchOrWhole === "function"
           ? patchOrWhole(task)
           : patchOrWhole || {};
+
       return {
         ...task,
         ...patch,
-        meta: { ...task.meta, ...(patch.meta || {}) },
+        meta: {
+          ...task.meta,
+          ...(patch.meta || {}),
+        },
       };
     });
 
-    await this.#applyStateChange(updatedTasks);
+    await this.#set(nextState);
   }
 
-  // ===== Kanban helpers =====
+  // =====================
+  // Kanban helpers
+  // =====================
 
   getNextOrder(status) {
-    const statusTasks = this.state.filter(
-      (task) => task.status === status
-    );
-    const maxOrder = statusTasks.reduce(
-      (max, task) => Math.max(max, task.order ?? 0),
-      0
-    );
+    const maxOrder = this.state
+      .filter((task) => task.status === status)
+      .reduce(
+        (maxSoFar, task) =>
+          Math.max(maxSoFar, task.order ?? 0),
+        0
+      );
+
     return maxOrder + 1;
   }
 
   async createIn(status, task) {
-    const targetStatus = status ?? task.status ?? "todo";
-    const withStatusAndOrder = {
+    const effectiveStatus =
+      status ?? task.status ?? "todo";
+
+    const taskWithStatus = {
       ...task,
-      status: targetStatus,
-      order: this.getNextOrder(targetStatus),
+      status: effectiveStatus,
+      order: this.getNextOrder(effectiveStatus),
     };
-    await this.add(withStatusAndOrder);
+
+    await this.add(taskWithStatus);
   }
 
-  async moveCard(taskId, targetStatus, targetIndex) {
-    const allTasks = [...this.state];
-    const taskToMove = allTasks.find((task) => task.id === taskId);
-    if (!taskToMove) return;
-
-    const sourceStatus = taskToMove.status;
-    const sourceColumn = this.#buildColumnWithoutTask(
-      allTasks,
-      sourceStatus,
-      taskId
-    );
-    const normalizedSourceColumn =
-      this.#normalizeColumnOrder(sourceColumn);
-
-    const targetColumn = this.#buildColumnWithoutTask(
-      allTasks,
-      targetStatus,
-      taskId
-    );
-    const normalizedTargetColumn = this.#insertTaskIntoColumn(
-      targetColumn,
-      taskToMove,
-      targetStatus,
-      targetIndex
+  async moveCard(id, toStatus, toIndex) {
+    const tasksCopy = [...this.state];
+    const card = tasksCopy.find(
+      (task) => task.id === id
     );
 
-    const updatedTasks = this.#mergeColumnsIntoTasks(
-      allTasks,
-      normalizedSourceColumn,
-      normalizedTargetColumn
-    );
+    if (!card) return;
 
-    await this.#applyStateChange(updatedTasks);
-  }
-
-  #buildColumnWithoutTask(taskList, status, excludedTaskId) {
-    return taskList
+    const sourceColumn = tasksCopy
       .filter(
         (task) =>
-          task.status === status && task.id !== excludedTaskId
+          task.status === card.status &&
+          task.id !== id
       )
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }
 
-  #normalizeColumnOrder(columnTasks) {
-    columnTasks.forEach((task, index) => {
-      task.order = index + 1;
-    });
-    return columnTasks;
-  }
+    normalizeColumnOrder(sourceColumn);
 
-  #insertTaskIntoColumn(columnTasks, task, status, index) {
-    const sortedColumn = [...columnTasks].sort(
-      (a, b) => (a.order ?? 0) - (b.order ?? 0)
+    const targetColumn = tasksCopy
+      .filter(
+        (task) =>
+          task.status === toStatus &&
+          task.id !== id
+      )
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    const safeIndex = clampIndex(
+      toIndex,
+      targetColumn.length
     );
-    const safeIndex = Math.min(
-      Math.max(0, index),
-      sortedColumn.length
-    );
-    const cardWithStatus = { ...task, status };
-    sortedColumn.splice(safeIndex, 0, cardWithStatus);
-    return this.#normalizeColumnOrder(sortedColumn);
-  }
+    const movedCard = {
+      ...card,
+      status: toStatus,
+    };
 
-  #mergeColumnsIntoTasks(
-    allTasks,
-    sourceColumnTasks,
-    targetColumnTasks
-  ) {
-    const updatedTasksById = new Map();
-    [...sourceColumnTasks, ...targetColumnTasks].forEach(
-      (task) => {
-        updatedTasksById.set(task.id, task);
+    targetColumn.splice(safeIndex, 0, movedCard);
+    normalizeColumnOrder(targetColumn);
+
+    const updatedIds = new Set(
+      [...sourceColumn, ...targetColumn].map(
+        (task) => task.id
+      )
+    );
+
+    const nextState = tasksCopy.map((task) => {
+      if (!updatedIds.has(task.id)) {
+        return task;
       }
-    );
+      return (
+        targetColumn.find(
+          (colTask) => colTask.id === task.id
+        ) ||
+        sourceColumn.find(
+          (colTask) => colTask.id === task.id
+        ) ||
+        task
+      );
+    });
 
-    return allTasks.map((task) =>
-      updatedTasksById.has(task.id)
-        ? updatedTasksById.get(task.id)
-        : task
-    );
+    this.state = nextState;
+    this.emitter.emit(this.state);
+    await this.#save();
   }
 
-  // ===== Bridge (backend) =====
+  // =====================
+  // Bridge (backend)
+  // =====================
 
   backendName() {
     return this.bridge.name();
   }
 
   async setBackend(kind) {
-    const backendInstance = buildBackendInstance(kind);
-    this.bridge.setBackend(backendInstance);
+    let backend;
+
+    switch (kind) {
+      case "memory":
+        backend = new MemoryBackend([]);
+        break;
+      case "mockApi":
+        backend = new MockApiBackend({
+          delay: MOCK_API_DELAY_MS,
+        });
+        break;
+      case "localStorage":
+      default:
+        backend = new LocalStorageBackend(
+          LOCAL_STORAGE_KEY
+        );
+        break;
+    }
+
+    this.bridge.setBackend(backend);
     this.backendEmitter.emit(this.backendName());
     await this.reload();
   }
 
-  // ===== Strategy(save) — przełączanie =====
+  // =====================
+  // Strategy(save) — przełączanie
+  // =====================
 
   saveStrategyName() {
-    return this.saveStrategy?.name?.() ?? "unknown";
+    return (
+      this.saveStrategy?.name?.() || "unknown"
+    );
   }
 
   async setSaveStrategy(kind) {
     if (this.saveStrategy?.dispose) {
       await this.saveStrategy.dispose();
     }
+
     this.saveStrategy = createSaveStrategy(kind);
     this.settingsEmitter.emit({
       saveStrategy: this.saveStrategyName(),
     });
+    // po zmianie strategii nic nie zapisujemy od razu
   }
 
-  // ===== MEMENTO API =====
+  // =====================
+  // MEMENTO API
+  // =====================
 
   createSnapshot() {
-    return {
-      data: cloneTasksForSnapshot(this.state),
-    };
+    const data =
+      typeof structuredClone === "function"
+        ? structuredClone(this.state)
+        : JSON.parse(JSON.stringify(this.state));
+
+    return { data };
   }
 
   async restoreSnapshot(memento) {
-    const candidate = memento?.data ?? memento;
-    const nextTasks = Array.isArray(candidate) ? candidate : [];
-    this.#updateState(nextTasks);
-    this.#notifyStateChanged();
-    await this.bridge.save(this.state);
+    const rawNext = Array.isArray(memento?.data)
+      ? memento.data
+      : Array.isArray(memento)
+      ? memento
+      : [];
+
+    const nextState = Array.isArray(rawNext)
+      ? rawNext
+      : [];
+
+    this.state = nextState;
+    this.emitter.emit(this.state);
+
+    const result = await this.bridge.save(
+      this.state
+    );
+    assertPersistenceOk(
+      result,
+      "restoreSnapshot"
+    );
   }
 }
 
 export const todoStore = TodoStore.getInstance();
+
+// =====================
+// UTILS
+// =====================
+
+function normalizeColumnOrder(columnTasks) {
+  columnTasks.forEach((task, index) => {
+    task.order = index + 1;
+  });
+}
+
+function clampIndex(index, length) {
+  const numericIndex = Number(index);
+  if (!Number.isFinite(numericIndex)) {
+    return length;
+  }
+  return Math.min(
+    Math.max(0, numericIndex),
+    length
+  );
+}
+
+/**
+ * Zamienia zwracane "kody błędów" (ok:false, error)
+ * na wyjątki. Używane w:
+ * - reload (load)
+ * - #save (save strategy)
+ * - restoreSnapshot (bridge.save)
+ */
+function assertPersistenceOk(result, context) {
+  if (!result || result.ok !== false) {
+    return;
+  }
+
+  const baseMessage = `Operacja persystencji nie powiodła się (${context}).`;
+
+  const error =
+    result.error instanceof Error
+      ? result.error
+      : new Error(baseMessage);
+
+  throw error;
+}

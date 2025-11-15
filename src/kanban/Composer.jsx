@@ -15,17 +15,23 @@ const STATUSES = [
   { value: "done",        label: "Done" },
 ];
 
+// magic numbers → stałe
+const DEFAULT_PRIORITY = 2;
+const MIN_PRIORITY = 1;
+const MAX_PRIORITY = 5;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
 // =====================
 // GŁÓWNY KOMPONENT
 // =====================
 
 export default function Composer() {
-  const { todoStore } = useStore(); // zostawione dla spójności API, nawet jeśli aktualnie nieużywane
+  const { todoStore } = useStore(); // zostawione dla spójności API
 
   const [title, setTitle] = useState("");
   const [type, setType] = useState("simple");
   const [status, setStatus] = useState("todo");
-  const [priority, setPriority] = useState(2);
+  const [priority, setPriority] = useState(DEFAULT_PRIORITY);
   const [due, setDue] = useState(getDefaultDueDateInputValue);
   const [error, setError] = useState("");
 
@@ -64,9 +70,7 @@ export default function Composer() {
         <input
           ref={inputRef}
           value={title}
-          onChange={(event) =>
-            setTitle(event.target.value)
-          }
+          onChange={(event) => setTitle(event.target.value)}
           placeholder="Dodaj kartę..."
           className="w-full py-2 outline-none"
         />
@@ -74,9 +78,7 @@ export default function Composer() {
 
       <select
         value={type}
-        onChange={(event) =>
-          setType(event.target.value)
-        }
+        onChange={(event) => setType(event.target.value)}
         className="border rounded-xl px-3 py-2"
       >
         <option value="simple">Simple</option>
@@ -87,12 +89,10 @@ export default function Composer() {
       {type === "priority" && (
         <input
           type="number"
-          min={1}
-          max={5}
+          min={MIN_PRIORITY}
+          max={MAX_PRIORITY}
           value={priority}
-          onChange={(event) =>
-            setPriority(event.target.value)
-          }
+          onChange={(event) => setPriority(event.target.value)}
           className="border rounded-xl px-3 py-2"
           placeholder="Priorytet 1-5"
         />
@@ -102,26 +102,19 @@ export default function Composer() {
         <input
           type="datetime-local"
           value={due}
-          onChange={(event) =>
-            setDue(event.target.value)
-          }
+          onChange={(event) => setDue(event.target.value)}
           className="border rounded-xl px-3 py-2"
         />
       )}
 
       <select
         value={status}
-        onChange={(event) =>
-          setStatus(event.target.value)
-        }
+        onChange={(event) => setStatus(event.target.value)}
         className="border rounded-xl px-3 py-2"
       >
-        {STATUSES.map((s) => (
-          <option
-            key={s.value}
-            value={s.value}
-          >
-            {s.label}
+        {STATUSES.map((statusOption) => (
+          <option key={statusOption.value} value={statusOption.value}>
+            {statusOption.label}
           </option>
         ))}
       </select>
@@ -134,9 +127,7 @@ export default function Composer() {
       </button>
 
       {error && (
-        <div className="md:col-span-6 text-sm text-red-600">
-          {error}
-        </div>
+        <div className="md:col-span-6 text-sm text-red-600">{error}</div>
       )}
     </form>
   );
@@ -152,10 +143,7 @@ function useComposerFocus(inputRef) {
       inputRef.current?.focus();
     };
 
-    const unsubscribe = uiBus.on(
-      "FOCUS_COMPOSER",
-      handleFocusComposer
-    );
+    const unsubscribe = uiBus.on("FOCUS_COMPOSER", handleFocusComposer);
     return unsubscribe;
   }, [inputRef]);
 }
@@ -164,13 +152,8 @@ function useComposerFocus(inputRef) {
 // LOGIKA BIZNESOWA (BUILDER + COMMAND)
 // =====================
 
-function buildTaskProps({
-  title,
-  type,
-  status,
-  priority,
-  due,
-}) {
+function buildTaskProps({ title, type, status, priority, due }) {
+  // WAŻNE: tu musi być NEW
   const builder = new TaskBuilder()
     .title(title)
     .type(type)
@@ -188,9 +171,7 @@ function buildTaskProps({
 }
 
 async function saveNewTask(status, task) {
-  await commandBus.execute(
-    new CreateInCommand(status, task)
-  );
+  await commandBus.execute(new CreateInCommand(status, task));
 }
 
 function handleSubmitSuccess(setTitle) {
@@ -202,9 +183,7 @@ function handleSubmitSuccess(setTitle) {
 }
 
 function handleSubmitError(error, setError) {
-  const message =
-    error?.message ||
-    "Nie udało się dodać zadania.";
+  const message = error?.message || "Nie udało się dodać zadania.";
   setError(message);
 
   uiBus.emit("TOAST", {
@@ -218,8 +197,6 @@ function handleSubmitError(error, setError) {
 // =====================
 
 function getDefaultDueDateInputValue() {
-  const tomorrow = Date.now() + 24 * 3600 * 1000;
-  return new Date(tomorrow)
-    .toISOString()
-    .slice(0, 16);
+  const tomorrow = Date.now() + ONE_DAY_MS;
+  return new Date(tomorrow).toISOString().slice(0, 16);
 }

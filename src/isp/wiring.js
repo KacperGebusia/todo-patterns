@@ -25,137 +25,112 @@ import {
   NotifyServiceAdapter,
 } from "./adapter-fat";
 
-// ===== INSTANCJE WĄSKICH IMPLEMENTACJI =====
+// =====================
+//   WĄSKIE SERWISY
+// =====================
 
-// Repozytorium zadań
-const taskReader = new StoreTaskReader();
-const taskWriter = new StoreTaskWriter();
-const taskCreator = new StoreTaskCreator();
-const taskUpdater = new StoreTaskUpdater();
-const taskRemover = new StoreTaskRemover();
-const taskMover = new StoreTaskMover();
-const taskBulkCloser = new StoreTaskBulkCloser();
+// Repozytorium zadań (ISP – małe interfejsy)
+const reader = new StoreTaskReader();
+const writer = new StoreTaskWriter();
+const creator = new StoreTaskCreator();
+const updater = new StoreTaskUpdater();
+const remover = new StoreTaskRemover();
+const mover = new StoreTaskMover();
+const closer = new StoreTaskBulkCloser();
 
-// Eksporterzy
+// Eksporterzy (CSV / JSON / ICS)
 const csvExporter = new ExportCSV();
 const jsonExporter = new ExportJSON();
 const icsExporter = new ExportICS();
 
-// Notyfikacje
+// Powiadomienia
 const toastNotifier = new ToastNotifier();
 const alertNotifier = new AlertNotifier();
 const confirmDialog = new ConfirmDialog();
-const consoleLogger = new ConsoleLogger();
+const logger = new ConsoleLogger();
+
+// =====================
+//   ADAPTERY "FAT"
+// =====================
 
 /**
- * Adaptery „grubych” interfejsów – przydatne, gdy stary kod oczekuje
+ * Adaptery „grubych” interfejsów – przydatne, gdy stary kod oczekuje:
  * ITaskServiceFat / IExportServiceFat / INotifyServiceFat.
+ * Nowy kod może korzystać wyłącznie z wąskich interfejsów, ale tu pokazujemy,
+ * że można je złożyć w "grubą" wersję.
  */
-export const taskServiceFat = new TaskServiceAdapter(
-  taskReader,
-  taskWriter,
-  taskCreator,
-  taskUpdater,
-  taskRemover,
-  taskMover,
-  taskBulkCloser
-);
+export const taskServiceFat = new TaskServiceAdapter({
+  reader,
+  writer,
+  creator,
+  updater,
+  remover,
+  mover,
+  bulkCloser: closer,
+});
 
-export const exportServiceFat = new ExportServiceAdapter(
-  csvExporter,
-  jsonExporter,
-  icsExporter
-);
+export const exportServiceFat = new ExportServiceAdapter({
+  csv: csvExporter,
+  json: jsonExporter,
+  ics: icsExporter,
+});
 
-export const notifyServiceFat = new NotifyServiceAdapter(
-  toastNotifier,
-  alertNotifier,
-  confirmDialog,
-  consoleLogger
-);
+export const notifyServiceFat = new NotifyServiceAdapter({
+  toast: toastNotifier,
+  alert: alertNotifier,
+  confirm: confirmDialog,
+  log: logger,
+});
 
-// ===== MAŁE FUNKCJE POMOCNICZE (SRP) =====
+// =====================
+//   USE CASE'y ISP
+// =====================
 
-async function readAllTasks() {
-  return taskReader.list();
-}
-
-async function saveAllTasks(tasks) {
-  return taskWriter.save(tasks);
-}
-
-function markDoneInStatus(tasks, status) {
-  const safeTasks = Array.isArray(tasks) ? tasks : [];
-  return safeTasks.map((task) =>
+/**
+ * Przypadek użycia: zamknij wszystkie zadania w danym statusie (ISP).
+ * Używa tylko wąskich interfejsów reader + writer + toast.
+ */
+export async function closeAllInStatus(status) {
+  const tasks = await reader.list();
+  const next = tasks.map((task) =>
     task.status === status
       ? { ...task, status: "done", completed: true }
       : task
   );
-}
 
-function filterDoneTasks(tasks) {
-  const safeTasks = Array.isArray(tasks) ? tasks : [];
-  return safeTasks.filter(
-    (task) => task.status === "done" || task.completed
-  );
-}
-
-function getExporterByFormat(format) {
-  const exporters = {
-    csv: () => csvExporter.exportCSV,
-    json: () => jsonExporter.exportJSON,
-    ics: () => icsExporter.exportICS,
-  };
-
-  const exporterFactory = exporters[format] || exporters.csv;
-  return exporterFactory();
-}
-
-function notifyBulkClose(status, closedCount) {
+  await writer.save(next);
   toastNotifier.toast(
     "success",
-    `Zamknięto ${closedCount} kart w kolumnie ${status}.`
+    `Zamknięto wszystkie karty w kolumnie ${status}.`
   );
-}
-
-function notifyExport(format, exportedCount) {
-  toastNotifier.toast(
-    "info",
-    `Wyeksportowano ${exportedCount} zakończonych kart (${format}).`
-  );
-}
-
-// ===== PRZYPADKI UŻYCIA (ORKIESTRACJA) =====
-
-/**
- * Przypadek użycia: zamknij wszystkie zadania w danym statusie (ISP).
- * Używa tylko wąskich interfejsów: reader + writer + toast.
- */
-export async function closeAllInStatus(status) {
-  const tasks = await readAllTasks();
-  const closedTasks = markDoneInStatus(tasks, status);
-  await saveAllTasks(closedTasks);
-
-  const closedCount = closedTasks.filter(
-    (task) => task.status === "done" || task.completed
-  ).length;
-
-  notifyBulkClose(status, closedCount);
 }
 
 /**
  * Przypadek użycia: eksport wszystkich ukończonych zadań w wybranym formacie.
- * Używa: reader + eksporter + toast.
+ * Używa readera + odpowiedniego eksportera + toast.
  *
- * @param {'csv'|'json'|'ics'} format
+ * @param {"csv"|"json"|"ics"} format
+ * @returns {{ mime: string, filename: string, data: string }}
  */
 export async function exportDoneAs(format) {
-  const tasks = await readAllTasks();
-  const doneTasks = filterDoneTasks(tasks);
+  const tasks = await reader.list();
+  const doneTasks = tasks.filter(
+    (task) => task.status === "done" || task.completed
+  );
 
-  const exporter = getExporterByFormat(format);
-  const file = exporter(doneTasks);
+  const exporters = {
+    csv: () => csvExporter.exportCSV(doneTasks),
+    json: () => jsonExporter.exportJSON(doneTasks),
+    ics: () => icsExporter.exportICS(doneTasks),
+  };
 
-  notifyExport(format, doneTasks.length);
+  const exporterFn = exporters[format] || exporters.csv;
+  const file = exporterFn();
+
+  toastNotifier.toast(
+    "info",
+    `Wyeksportowano ${doneTasks.length} kart (${format}).`
+  );
+
   return file;
 }

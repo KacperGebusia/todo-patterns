@@ -1,5 +1,5 @@
 // src/builder/TaskBuilder.js
-// [PATTERN: Builder] — deklaracja buildera zadań
+// [PATTERN: Builder] — DEKLARACJA
 
 export class TaskBuilder {
   constructor() {
@@ -7,69 +7,55 @@ export class TaskBuilder {
   }
 
   reset() {
-    this.titleText = "";
-    this.typeName = "simple";
-    this.meta = {};
-    this.isCompleted = false;
-    this.statusName = "todo";
+    this._title = "";
+    this._type = "simple";
+    this._meta = {};
+    this._completed = false;
+    this._status = "todo";
     return this;
   }
 
-  setTitle(rawTitle) {
-    this.titleText = String(rawTitle ?? "").trim();
+  title(value) {
+    this._title = String(value ?? "").trim();
     return this;
   }
 
-  setType(rawType) {
-    this.typeName = rawType || "simple";
+  type(value) {
+    this._type = value || "simple";
     return this;
   }
 
-  setPriority(priorityValue) {
-    this.meta.priority = Number(priorityValue ?? 1);
+  priority(priorityValue) {
+    this._meta.priority = Number(priorityValue ?? 1);
     return this;
   }
 
-  setDueDate(localDateTimeValue) {
-    const iso = this.toIsoString(localDateTimeValue);
-    if (iso) {
-      this.meta.due = iso;
-    }
+  due(localDateTimeString) {
+    this._meta.due = new Date(localDateTimeString).toISOString();
     return this;
   }
 
-  setStatus(rawStatus) {
-    this.statusName = rawStatus || "todo";
+  status(statusValue) {
+    this._status = statusValue || "todo";
     return this;
   }
 
-  setCompleted(flag) {
-    this.isCompleted = Boolean(flag);
+  completed(flag) {
+    this._completed = Boolean(flag);
     return this;
-  }
-
-  toIsoString(localDateTimeValue) {
-    if (!localDateTimeValue) return null;
-    const date = new Date(localDateTimeValue);
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toISOString();
-  }
-
-  validate() {
-    if (!this.titleText) {
-      throw new Error("Brak tytułu zadania.");
-    }
   }
 
   build() {
-    this.validate();
+    if (!this._title) {
+      throw new Error("Brak tytułu zadania.");
+    }
 
     return {
-      title: this.titleText,
-      completed: this.isCompleted,
-      type: this.typeName,
-      status: this.statusName,
-      meta: { ...this.meta },
+      title: this._title,
+      completed: this._completed,
+      type: this._type,
+      status: this._status,
+      meta: { ...this._meta },
     };
   }
 }

@@ -1,180 +1,162 @@
 // src/strategy/save.js
 // [PATTERN: Strategy] — strategie zapisu do persystencji
 
-// --- Funkcje pomocnicze ---
+// ===== magic numbers → stałe =====
+const DEFAULT_DEBOUNCE_MS = 500;
+const DEFAULT_BATCH_COUNT = 5;
+const DEFAULT_BATCH_TIMEOUT_MS = 1500;
 
-function cloneStateDeep(state) {
+function deepCopy(value) {
   if (typeof structuredClone === "function") {
-    return structuredClone(state);
+    return structuredClone(value);
   }
-  return JSON.parse(JSON.stringify(state));
+  return JSON.parse(JSON.stringify(value));
 }
 
-// --- Strategia: zapis natychmiastowy ---
-
 class ImmediateSaveStrategy {
-  getName() {
+  name() {
     return "immediate";
   }
 
-  async save(state, persistenceBridge) {
-    return persistenceBridge.save(state);
+  async save(state, bridge) {
+    return await bridge.save(state);
   }
 
   async dispose() {
-    // brak zasobów do zwolnienia
+    // brak stanu do czyszczenia
   }
 }
 
-// --- Strategia: zapis z debounce ---
-
 class DebouncedSaveStrategy {
-  constructor(debounceDelayMs = 500) {
-    this.debounceDelayMs = debounceDelayMs;
-    this.debounceTimerId = null;
-    this.pendingSave = null; // { state, bridge }
+  constructor(delayMs = DEFAULT_DEBOUNCE_MS) {
+    this.delayMs = delayMs;
+    this.timerId = null;
+    this.pendingSnapshot = null; // { state, bridge }
   }
 
-  getName() {
+  name() {
     return "debounce500";
   }
 
-  rememberPendingSave(state, persistenceBridge) {
-    this.pendingSave = {
-      state: cloneStateDeep(state),
-      bridge: persistenceBridge,
+  async save(state, bridge) {
+    this.pendingSnapshot = {
+      state: deepCopy(state),
+      bridge,
     };
-  }
 
-  clearDebounceTimer() {
-    if (this.debounceTimerId) {
-      clearTimeout(this.debounceTimerId);
-      this.debounceTimerId = null;
+    if (this.timerId) {
+      clearTimeout(this.timerId);
     }
-  }
 
-  scheduleDebouncedSave(resolve) {
-    this.debounceTimerId = setTimeout(async () => {
-      const latestPendingSave = this.pendingSave;
-      this.pendingSave = null;
-      if (latestPendingSave) {
-        await latestPendingSave.bridge.save(latestPendingSave.state);
-      }
-      resolve({ ok: true });
-    }, this.debounceDelayMs);
-  }
+    return await new Promise((resolve) => {
+      this.timerId = setTimeout(async () => {
+        const snapshot = this.pendingSnapshot;
+        this.pendingSnapshot = null;
+        this.timerId = null;
 
-  async save(state, persistenceBridge) {
-    this.rememberPendingSave(state, persistenceBridge);
-    this.clearDebounceTimer();
-
-    return new Promise((resolve) => {
-      this.scheduleDebouncedSave(resolve);
+        if (snapshot) {
+          const result = await snapshot.bridge.save(snapshot.state);
+          resolve(result);
+        } else {
+          resolve({ ok: true });
+        }
+      }, this.delayMs);
     });
   }
 
-  async flushPendingSave() {
-    if (!this.pendingSave) return;
-
-    const latestPendingSave = this.pendingSave;
-    this.pendingSave = null;
-    await latestPendingSave.bridge.save(latestPendingSave.state);
-  }
-
   async dispose() {
-    this.clearDebounceTimer();
-    await this.flushPendingSave();
+    if (this.timerId) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
+    }
+
+    if (this.pendingSnapshot) {
+      const snapshot = this.pendingSnapshot;
+      this.pendingSnapshot = null;
+      await snapshot.bridge.save(snapshot.state);
+    }
   }
 }
 
-// --- Strategia: zapis wsadowy (np. co 5 zmian lub po czasie) ---
-
 class BatchSaveStrategy {
-  constructor(batchSize = 5, batchTimeoutMs = 1500) {
+  constructor(batchSize = DEFAULT_BATCH_COUNT, timeoutMs = DEFAULT_BATCH_TIMEOUT_MS) {
     this.batchSize = batchSize;
-    this.batchTimeoutMs = batchTimeoutMs;
-    this.saveCounter = 0;
-    this.batchTimerId = null;
-    this.pendingSave = null; // { state, bridge }
+    this.timeoutMs = timeoutMs;
+    this.changeCounter = 0;
+    this.timerId = null;
+    this.lastSnapshot = null; // { state, bridge }
   }
 
-  getName() {
+  name() {
     return "batch5";
   }
 
-  rememberPendingSave(state, persistenceBridge) {
-    this.pendingSave = {
-      state: cloneStateDeep(state),
-      bridge: persistenceBridge,
+  async save(state, bridge) {
+    this.changeCounter += 1;
+    this.lastSnapshot = {
+      state: deepCopy(state),
+      bridge,
     };
-  }
 
-  resetBatchCounter() {
-    this.saveCounter = 0;
-  }
-
-  clearBatchTimer() {
-    if (this.batchTimerId) {
-      clearTimeout(this.batchTimerId);
-      this.batchTimerId = null;
-    }
-  }
-
-  async flushBatchNow() {
-    if (!this.pendingSave) return;
-
-    const latestPendingSave = this.pendingSave;
-    this.pendingSave = null;
-    await latestPendingSave.bridge.save(latestPendingSave.state);
-  }
-
-  scheduleBatchFlush() {
-    this.clearBatchTimer();
-    this.batchTimerId = setTimeout(async () => {
-      this.resetBatchCounter();
-      await this.flushBatchNow();
-    }, this.batchTimeoutMs);
-  }
-
-  async save(state, persistenceBridge) {
-    this.saveCounter += 1;
-    this.rememberPendingSave(state, persistenceBridge);
-
-    // przekroczenie progu zapisów — flush natychmiast
-    if (this.saveCounter >= this.batchSize) {
-      this.resetBatchCounter();
-      this.clearBatchTimer();
-      await this.flushBatchNow();
-      return { ok: true };
+    if (this.changeCounter >= this.batchSize) {
+      // natychmiastowy zapis po osiągnięciu progu
+      this.resetTimer();
+      this.changeCounter = 0;
+      return await bridge.save(this.lastSnapshot.state);
     }
 
-    // nie przekroczyliśmy progu – ustawiamy timer
-    this.scheduleBatchFlush();
+    this.armTimer();
     return { ok: true };
   }
 
   async dispose() {
-    this.clearBatchTimer();
-    await this.flushBatchNow();
-    this.resetBatchCounter();
+    this.resetTimer();
+
+    if (this.lastSnapshot) {
+      const snapshot = this.lastSnapshot;
+      this.lastSnapshot = null;
+      this.changeCounter = 0;
+      await snapshot.bridge.save(snapshot.state);
+    }
+  }
+
+  armTimer() {
+    this.resetTimer();
+
+    this.timerId = setTimeout(async () => {
+      this.changeCounter = 0;
+
+      if (this.lastSnapshot) {
+        const snapshot = this.lastSnapshot;
+        this.lastSnapshot = null;
+        await snapshot.bridge.save(snapshot.state);
+      }
+    }, this.timeoutMs);
+  }
+
+  resetTimer() {
+    if (this.timerId) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
+    }
   }
 }
 
-// --- Fabryka strategii zapisu ---
-
-export function createSaveStrategy(strategyKey) {
-  switch (strategyKey) {
+export function createSaveStrategy(kind) {
+  switch (kind) {
     case "debounce500":
-      return new DebouncedSaveStrategy(500);
+      return new DebouncedSaveStrategy(DEFAULT_DEBOUNCE_MS);
     case "batch5":
-      return new BatchSaveStrategy(5, 1500);
+      return new BatchSaveStrategy(
+        DEFAULT_BATCH_COUNT,
+        DEFAULT_BATCH_TIMEOUT_MS
+      );
     case "immediate":
     default:
       return new ImmediateSaveStrategy();
   }
 }
 
-// Dostępne opcje (np. dla selecta w UI)
 export const SAVE_STRATEGY_OPTIONS = [
   { key: "immediate",   label: "Natychmiastowy" },
   { key: "debounce500", label: "Debounce 500ms" },
