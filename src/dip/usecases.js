@@ -1,11 +1,5 @@
 // dip/usecases.js
 
-// Zad 2.4 Zasada odwrócenia zależności
-// warstwa wysokopoziomowa – przypadki użycia oparte wyłącznie na abstrakcjach
-
-
-
-
 import {
   ITaskRepository,
   INotifier,

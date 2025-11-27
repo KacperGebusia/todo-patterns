@@ -1,11 +1,6 @@
 // src/builder/TaskBuilder.js
 // [PATTERN: Builder] — DEKLARACJA
-
-// Zad 1: Zasada podstawienia Liskov
 // Współpraca z modelami z src/models/Task.js (LSP + Factory-like)
-
-// Zad 9 zwracanie wyjątków
-// build() - Brak tytułu zadania
 
 import {
   SimpleTask,

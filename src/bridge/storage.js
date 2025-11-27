@@ -1,11 +1,6 @@
 // src/bridge/storage.js
 // [PATTERN: Bridge] — abstrakcja Storage + różne backendy persystencji
 
-// Zad 4 znaczące nazwy dla klas
-
-// Zad 5 długość metod <= 20 linijek
-// PRzykład klas, zawierających metody o maksymalnej długości 20 linijek
-
 // ===== ABSTRAKCJA =====
 
 export class Storage {

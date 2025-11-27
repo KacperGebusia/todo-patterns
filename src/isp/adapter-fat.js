@@ -1,9 +1,4 @@
 // src/isp/adapter-fat.js
-
-// Zad 3.4 Zasada segregacji interfejsów
-// adaptery które składają grube interfejsy z wielu małych
-
-
 // Adaptery, które budują "grube" interfejsy z fat.js na podstawie wąskich interfejsów z segregated.js.
 
 import { ITaskServiceFat, IExportServiceFat, INotifyServiceFat } from "./fat";

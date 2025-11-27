@@ -1,9 +1,4 @@
 // src/isp/fat.js
-
-// Zad 3.1 Zasada segregacji interfejsów
-// zawiera 3 przykładowe grube interfejsy
-
-
 // Anty-przykład ISP – 3 "grube" interfejsy, które mają za dużo odpowiedzialności.
 // Później pokażemy ich rozbicie na mniejsze kontrakty w segregated.js.
 

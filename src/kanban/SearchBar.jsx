@@ -1,8 +1,5 @@
 // src/kanban/SearchBar.jsx
 
-// Zad 7 jeden poziom abstrakcji (top to bottom)
-// handlesubmit - tylko UI - logika w emitquery
-
 import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { uiBus } from "../mediator/UIBus";

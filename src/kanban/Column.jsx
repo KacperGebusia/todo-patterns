@@ -1,9 +1,5 @@
 // src/kanban/Column.jsx
 
-// Zad 7 jeden poziom abstrakcji (top to bottom)
-// handledrop - tylko przechwytuje event i deleguje na małe funkcje
-
-
 import Card from "./Card";
 
 // =====================

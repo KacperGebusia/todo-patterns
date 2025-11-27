@@ -1,8 +1,4 @@
 // dip/contracts.js
-
-// Zad 2.1 Zasada odwrócenia zależności
-// Abstrakcyjne interfejsy
-
 // Kontrakty wysokiego poziomu dla DIP:
 // - ITaskRepository: dostęp do zadań
 // - INotifier: powiadomienia

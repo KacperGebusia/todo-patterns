@@ -1,12 +1,5 @@
 // src/kanban/Composer.jsx
 
-// Zad 8 maksymalnie 3 argumenty funkcji
-// przykład
-// buildtaskprops - jeśli potrzeba więcej argumentów to można je opakować w jeden 
-
-// Zad 10 eliminacja magicznych liczb
-// PRzykład - stałe
-
 import { useEffect, useRef, useState } from "react";
 import { PlusCircle } from "lucide-react";
 import { TaskFactory } from "../domain/factory";
@@ -159,9 +152,8 @@ function useComposerFocus(inputRef) {
 // LOGIKA BIZNESOWA (BUILDER + COMMAND)
 // =====================
 
-function buildTaskProps(task) {
-  const { title, type, status, priority, due } = task;
-
+function buildTaskProps({ title, type, status, priority, due }) {
+  // WAŻNE: tu musi być NEW
   const builder = new TaskBuilder()
     .title(title)
     .type(type)

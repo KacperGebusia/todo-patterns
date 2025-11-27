@@ -2,6 +2,9 @@
 // Wzorce: Interpreter • Iterator • State(FSM) • Command+Memento
 // Prototype • Factory • Strategy(sort) • Mediator
 
+// Zad 1
+// + Functional Interfaces (TaskPredicate) użyte z wyrażeniem lambda
+
 import { useEffect, useMemo, useState } from "react";
 import Column from "./Column";
 import Composer from "./Composer";
@@ -29,6 +32,9 @@ import {
   UpdateTaskCommand,
 } from "../command";
 import { uiBus } from "../mediator/UIBus";
+
+// Funkcyjne interfejsy – użycie TaskPredicate z wyrażeniem lambda
+import { filterTasks } from "../fn/TaskFunctions";
 
 const PAGE_SIZE = 12;
 
@@ -221,7 +227,7 @@ function usePagedResults(results, page) {
 }
 
 // =====================
-// OPERACJE NA TSK / COMMAND + STATE (średni poziom)
+// OPERACJE NA TASK / COMMAND + STATE (średni poziom)
 // =====================
 
 async function moveCardAndUpdateCompletion(
@@ -299,10 +305,18 @@ function filterTasksByStatus(
 ) {
   const safeTasks = Array.isArray(tasks) ? tasks : [];
 
-  return safeTasks
-    .map((task) => normalizeTaskStatus(task))
-    .filter((task) => task.status === status)
-    .sort(comparator);
+  // Funkcyjny interfejs TaskPredicate + wyrażenie lambda:
+  // (task) => task.status === status
+  const normalized = safeTasks.map((task) =>
+    normalizeTaskStatus(task)
+  );
+
+  const filtered = filterTasks(
+    normalized,
+    (task) => task.status === status
+  );
+
+  return filtered.sort(comparator);
 }
 
 function normalizeTaskStatus(task) {

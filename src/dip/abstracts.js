@@ -1,8 +1,5 @@
 // dip/abstracts.js
 
-// Zad 2.2 Zasada odwrócenia zależności
-// KLasy abstrakcyjne rozszerzające interfejsy o wspólne metody pomocnicze
-
 import {
   ITaskRepository,
   INotifier,

@@ -1,8 +1,4 @@
 // src/isp/wiring.js
-
-// Zad 3.5 Zasada segregacji interfejsów
-// kompozycja obiektów, przypadki użycia oparte na wąskich interfejsach
-
 // Kompozycja (DI) dla ISP – tutaj tworzymy konkretne obiekty wąskich interfejsów
 // oraz adaptery "grubych" interfejsów dla zachowania kompatybilności.
 

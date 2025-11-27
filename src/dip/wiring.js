@@ -1,9 +1,5 @@
 // dip/wiring.js
 
-// Zad 2.5 Zasada odwrócenia zależności
-// składanie zależności
-
-
 import { todoStore } from "../store";
 import {
   LocalStateTaskRepository,

@@ -430,3 +430,16 @@ Wprowadzono spójną i przewidywalną architekturę, w której:
 - podkomponenty korzystają z hooków,
 - hooki korzystają z helperów,
 - helpery wykonują tylko najniższy poziom logiki.
+
+
+## Lab 4
+
+W projekcie zdefiniowano trzy interfejsy funkcyjne (w stylu Javy) za pomocą JSDoc:
+
+- TaskPredicate – przyjmuje Task, zwraca boolean, wykorzystywany do filtrowania zadań (np. przy wyszukiwaniu i widokach kolumn Kanban).
+
+- TaskMapper – przyjmuje Task, zwraca zmodyfikowany Task, używany przy aktualizacjach (np. zmiana statusu, masowe przejścia między stanami).
+
+- TaskEffect – przyjmuje Task i wykonuje efekt uboczny (log, notyfikacja, eksport).
+
+Implementacje tych interfejsów przekazywane są do funkcji wyższego rzędu (filterTasks, mapTasks, forEachTask) w postaci wyrażeń lambda (arrow functions), co integruje paradygmat funkcyjny z logiką aplikacji React/JavaScript.

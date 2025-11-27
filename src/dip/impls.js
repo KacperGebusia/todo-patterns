@@ -1,8 +1,5 @@
 // dip/impls.js
 
-// Zad 2.3 Zasada odwrócenia zależności
-// konkretne implementacje niskopoziomowe - nie są importowane bezpośrednio przez warstwę wysokopoziomową
-
 import {
   AbstractTaskRepository,
   AbstractNotifier,
