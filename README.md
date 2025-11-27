@@ -434,6 +434,8 @@ Wprowadzono spójną i przewidywalną architekturę, w której:
 
 ## Lab 4
 
+### Zad 1: funkcyjne interfejsy
+
 W projekcie zdefiniowano trzy interfejsy funkcyjne (w stylu Javy) za pomocą JSDoc:
 
 - TaskPredicate – przyjmuje Task, zwraca boolean, wykorzystywany do filtrowania zadań (np. przy wyszukiwaniu i widokach kolumn Kanban).
@@ -443,3 +445,24 @@ W projekcie zdefiniowano trzy interfejsy funkcyjne (w stylu Javy) za pomocą JSD
 - TaskEffect – przyjmuje Task i wykonuje efekt uboczny (log, notyfikacja, eksport).
 
 Implementacje tych interfejsów przekazywane są do funkcji wyższego rzędu (filterTasks, mapTasks, forEachTask) w postaci wyrażeń lambda (arrow functions), co integruje paradygmat funkcyjny z logiką aplikacji React/JavaScript.
+
+### Zad 4: naprawianie klasy
+
+BadTodoManager:
+- ma ~200 linii,
+- miesza: walidację, logikę domenową, DOM, localStorage, fetch, alert, logi, callbacki,
+- metody mają dużo argumentów,
+- nazwy typu addOrUpdateTaskMaybe, lg,
+- długie metody.
+
+BetterTodoManager:
+- Konstruktor przyjmuje jeden obiekt konfiguracyjny, a nie 5–10 parametrów.
+- Metoda addOrUpdateTaskMaybe(...) → zamieniona na addOrUpdateTask(taskData, options):
+  - logika rozbita na _normalizeTaskInput, _updateTask, _createTask, _persistTasks, _renderTasks, _showToast.
+- Metoda syncWithServerAndMaybeClearEverything(...) → syncWithServer({ clearLocal, delayMs, onDone }):
+  - osobne metody: _postTasksToServer, _clearLocalData, _markContainerAsSynced, _delay.
+- Nazwy:
+  - lg() → logState(),
+  - pozbyliśmy się „Maybe” w nazwach, które nic nie mówią.
+- Komentarze ograniczone do sensownych miejsc, a nie „szum informacyjny”.
+- Każda metoda ma jedną odpowiedzialność (albo bardzo bliskie sobie zadania).
