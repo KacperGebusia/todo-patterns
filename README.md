@@ -466,3 +466,10 @@ BetterTodoManager:
   - pozbyliśmy się „Maybe” w nazwach, które nic nie mówią.
 - Komentarze ograniczone do sensownych miejsc, a nie „szum informacyjny”.
 - Każda metoda ma jedną odpowiedzialność (albo bardzo bliskie sobie zadania).
+
+### Zad 5: testy
+
+- Task (klasa bazowa)
+- PriorityTask
+- DeadlineTask
+- TaskBuilder
