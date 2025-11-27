@@ -152,8 +152,9 @@ function useComposerFocus(inputRef) {
 // LOGIKA BIZNESOWA (BUILDER + COMMAND)
 // =====================
 
-function buildTaskProps({ title, type, status, priority, due }) {
-  // WAŻNE: tu musi być NEW
+function buildTaskProps(task) {
+  const { title, type, status, priority, due } = task;
+
   const builder = new TaskBuilder()
     .title(title)
     .type(type)
