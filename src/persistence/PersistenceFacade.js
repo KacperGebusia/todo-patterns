@@ -1,5 +1,7 @@
 // [PATTERN: Facade] — uproszczony dostęp do systemów persystencji
 
+// Zad 6 Funkcje spełniają jedną rolę
+
 // --- Backendy persystencji (jedna odpowiedzialność każdy) ---
 
 class LocalStorageDriver {

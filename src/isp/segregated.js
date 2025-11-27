@@ -1,4 +1,8 @@
 // src/isp/segregated.js
+
+// Zad 3.2 Zasada segregacji interfejsów
+// podział grubych interfejsów na małe
+
 // Tutaj stosujemy Interface Segregation Principle.
 // Zamiast 3 "grubych" interfejsów z fat.js dzielimy je na małe, spójne kontrakty.
 

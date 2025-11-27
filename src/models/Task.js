@@ -1,4 +1,6 @@
 // src/models/Task.js
+
+// Zad 1: Zasada podstawienia Liskov
 // LSP: Task jako klasa bazowa, SimpleTask / PriorityTask / DeadlineTask są wymienialne
 
 export class Task {

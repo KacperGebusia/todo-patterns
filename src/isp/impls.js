@@ -1,6 +1,11 @@
 // src/isp/impls.js
+
+// Zad 3.3 Zasada segregacji interfejsów
+// implementacje wąskich interfejsów
+
 // Konkretne implementacje WĄSKICH interfejsów (po segregacji).
 // Każda klasa robi dokładnie jedną rzecz (albo ma bardzo wąski zakres odpowiedzialności).
+
 
 import { todoStore } from "../store";
 import { uiBus } from "../mediator/UIBus";

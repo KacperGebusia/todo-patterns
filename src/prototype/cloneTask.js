@@ -1,5 +1,7 @@
 // [PATTERN: Prototype] — deklaracja i narzędzia do klonowania zadań
 
+// Zad 6 Funkcje spełniają jedną rolę
+
 // --- POMOCNICZE FUNKCJE (jedna odpowiedzialność każda) ---
 
 function deepCloneObject(obj) {

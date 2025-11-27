@@ -1,5 +1,12 @@
 // src/kanban/Composer.jsx
 
+// Zad 8 maksymalnie 3 argumenty funkcji
+// przykład
+// buildtaskprops - jeśli potrzeba więcej argumentów to można je opakować w jeden 
+
+// Zad 10 eliminacja magicznych liczb
+// PRzykład - stałe
+
 import { useEffect, useRef, useState } from "react";
 import { PlusCircle } from "lucide-react";
 import { TaskFactory } from "../domain/factory";
